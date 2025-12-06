@@ -5,3 +5,4 @@ __pycache__/
 data/
 *.zip
 *.egg-info
+azure_check_results_*.csv
