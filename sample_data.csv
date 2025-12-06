@@ -1,0 +1,21 @@
+Date,Sprint,Name,Attendance,Planned,Type,Title,Azure Link,Status,Start Date,Estimated End Date,Final End Date,Delay reason,Hrs,Remarks,Automation Applicable,Automation Done,Is Bug,Is CI Task,Test Cases Written,Test Cases Automated
+2024-01-15,Sprint 1,Alice Johnson,Present,Yes,Testing,API Testing for User Module,AZ-1001,Completed,2024-01-15,2024-01-17,2024-01-17,,8,,Yes,Yes,No,Yes,15,12
+2024-01-16,Sprint 1,Bob Smith,Present,Yes,Automation,Selenium Test Suite,AZ-1002,Completed,2024-01-16,2024-01-18,2024-01-18,,6,,Yes,Yes,No,Yes,10,10
+2024-01-17,Sprint 1,Alice Johnson,Present,Yes,Bug Fix,Fix login validation,AZ-1003,Completed,2024-01-17,2024-01-17,2024-01-17,,4,,No,No,Yes,No,0,0
+2024-01-18,Sprint 1,Charlie Davis,Present,No,Testing,Performance Testing,AZ-1004,Completed,2024-01-18,2024-01-20,2024-01-22,Resource unavailable,12,,Yes,No,No,Yes,20,5
+2024-01-19,Sprint 1,Bob Smith,Present,Yes,Automation,API Automation,AZ-1005,Completed,2024-01-19,2024-01-21,2024-01-21,,7,,Yes,Yes,No,Yes,8,8
+2024-01-22,Sprint 1,Alice Johnson,Present,Yes,Testing,Integration Testing,AZ-1006,In Progress,2024-01-22,2024-01-24,,,5,,Yes,No,No,No,12,0
+2024-02-01,Sprint 2,Bob Smith,Present,Yes,Testing,Database Testing,AZ-2001,Completed,2024-02-01,2024-02-03,2024-02-03,,9,,Yes,Yes,No,Yes,18,15
+2024-02-02,Sprint 2,Charlie Davis,Present,Yes,Automation,E2E Test Suite,AZ-2002,Completed,2024-02-02,2024-02-05,2024-02-05,,10,,Yes,Yes,No,Yes,25,25
+2024-02-05,Sprint 2,Alice Johnson,Present,Yes,Bug Fix,Fix UI rendering issue,AZ-2003,Completed,2024-02-05,2024-02-05,2024-02-05,,3,,No,No,Yes,No,0,0
+2024-02-06,Sprint 2,Bob Smith,Present,Yes,Testing,Security Testing,AZ-2004,Completed,2024-02-06,2024-02-08,2024-02-10,Dependency delay,15,,Yes,No,No,Yes,30,10
+2024-02-07,Sprint 2,Charlie Davis,Present,No,Bug Fix,Critical production bug,AZ-2005,Completed,2024-02-07,2024-02-07,2024-02-08,,6,,No,No,Yes,No,0,0
+2024-02-08,Sprint 2,Alice Johnson,Present,Yes,Automation,Mobile App Automation,AZ-2006,Completed,2024-02-08,2024-02-12,2024-02-12,,12,,Yes,Yes,No,Yes,22,20
+2024-02-09,Sprint 2,Bob Smith,Present,Yes,Testing,Load Testing,AZ-2007,In Progress,2024-02-09,2024-02-11,,,8,,Yes,No,No,Yes,15,0
+2024-03-01,Sprint 3,Charlie Davis,Present,Yes,Testing,Regression Testing,AZ-3001,Completed,2024-03-01,2024-03-04,2024-03-04,,11,,Yes,Yes,No,Yes,40,35
+2024-03-04,Sprint 3,Alice Johnson,Present,Yes,Automation,CI/CD Pipeline Tests,AZ-3002,Completed,2024-03-04,2024-03-06,2024-03-06,,8,,Yes,Yes,No,Yes,12,12
+2024-03-05,Sprint 3,Bob Smith,Present,Yes,Testing,Functional Testing,AZ-3003,Completed,2024-03-05,2024-03-07,2024-03-09,Code review delay,14,,Yes,No,No,No,25,8
+2024-03-06,Sprint 3,Charlie Davis,Present,No,Bug Fix,Fix data validation bug,AZ-3004,Completed,2024-03-06,2024-03-06,2024-03-07,,5,,No,No,Yes,No,0,0
+2024-03-07,Sprint 3,Alice Johnson,Present,Yes,Automation,REST API Automation,AZ-3005,Completed,2024-03-07,2024-03-10,2024-03-10,,9,,Yes,Yes,No,Yes,18,18
+2024-03-11,Sprint 3,Bob Smith,Present,Yes,Testing,UAT Testing,AZ-3006,Completed,2024-03-11,2024-03-13,2024-03-13,,10,,Yes,No,No,No,28,5
+2024-03-12,Sprint 3,Charlie Davis,Present,Yes,Automation,Test Data Automation,AZ-3007,In Progress,2024-03-12,2024-03-15,,,7,,Yes,Yes,No,Yes,10,10
