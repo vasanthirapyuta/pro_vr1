@@ -1,4 +1,4 @@
-# PA-AMR KPI Toolkit
+# PA-AMR QA Team KPI Toolkit
 
 This repository contains tools to compute KPIs from daily update sheets for PA-AMR warehouse projects,
 including a CLI script and a Streamlit dashboard for interactive exploration.
