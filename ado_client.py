@@ -60,13 +60,14 @@ class ADOClient:
 
     def get_user_stories(self, iteration_path: str, qa_members: list[str], qa_tag: str) -> list[dict]:
         """Return User Stories in the sprint assigned to a QA member or tagged qa_tag."""
-        cache_key = self._make_key("user_stories", iteration_path, qa_members, qa_tag)
+        norm_members = sorted({m.strip() for m in qa_members if m and m.strip()})
+        cache_key = self._make_key("user_stories", iteration_path, tuple(norm_members), qa_tag)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
         member_clause = self._member_or_tag_clause(
-            field="[System.AssignedTo]", members=qa_members, tag=qa_tag
+            field="[System.AssignedTo]", members=norm_members, tag=qa_tag
         )
         query = f"""
             SELECT [System.Id] FROM WorkItems
@@ -94,13 +95,14 @@ class ADOClient:
 
     def get_bugs(self, iteration_path: str, qa_members: list[str], qa_tag: str) -> list[dict]:
         """Return Bugs in the PI created by a QA member or tagged qa_tag."""
-        cache_key = self._make_key("bugs", iteration_path, qa_members, qa_tag)
+        norm_members = sorted({m.strip() for m in qa_members if m and m.strip()})
+        cache_key = self._make_key("bugs", iteration_path, tuple(norm_members), qa_tag)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
         member_clause = self._member_or_tag_clause(
-            field="[System.CreatedBy]", members=qa_members, tag=qa_tag
+            field="[System.CreatedBy]", members=norm_members, tag=qa_tag
         )
         # Query UNDER the PI so bugs across all sub-sprints are returned; callers filter to sprint.
         pi_path = "\\".join(iteration_path.split("\\")[:2])

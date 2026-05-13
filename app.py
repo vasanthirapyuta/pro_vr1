@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 from ado_client import ADOClient
 
@@ -78,8 +79,13 @@ CORS(app, resources={r"/api/*": {"origins": _cors_origins}})
 
 @app.errorhandler(Exception)
 def handle_exception(exc: Exception):
+    if isinstance(exc, HTTPException):
+        return exc
     logger.exception("Unhandled exception on %s %s", request.method, request.path)
-    return jsonify({"error": "Internal server error", "detail": str(exc)}), 500
+    body: dict = {"error": "Internal server error"}
+    if _debug:
+        body["detail"] = str(exc)
+    return jsonify(body), 500
 
 
 # ── Health ──────────────────────────────────────────────────────────────────────

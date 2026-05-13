@@ -324,7 +324,9 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
   const { data: trends } = useFetch('/api/kpi/trends');
 
   // Expose refresh handle so parent can trigger after cache clear
-  useEffect(() => { onCacheRefreshed && onCacheRefreshed(() => refresh()); }, []);
+  useEffect(() => {
+    if (onCacheRefreshed) onCacheRefreshed(() => refresh());
+  }, [onCacheRefreshed, refresh]);
 
   const prevKpi = trends && kpi
     ? (() => {
@@ -854,9 +856,13 @@ function App() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetch('/api/refresh', { method: 'POST' })
-      .then(() => {
-        // Trigger re-fetch in the active page via its useFetch refresh handle
+      .then(r => {
+        if (!r.ok) throw new Error(`Cache refresh failed (${r.status})`);
         pageRefreshRef.current?.();
+      })
+      .catch(err => {
+        // Log to console; avoid confusing data-refresh on a failed cache clear
+        console.error('Cache refresh error:', err.message);
       })
       .finally(() => setRefreshing(false));
   }, []);
