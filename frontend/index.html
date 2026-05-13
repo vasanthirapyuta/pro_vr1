@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QA Metrics Dashboard — rapyuta-robotics</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #f1f5f9;
+      --card:      #ffffff;
+      --border:    #e2e8f0;
+      --text:      #1e293b;
+      --muted:     #64748b;
+      --indigo:    #6366f1;
+      --indigo-lt: #eef2ff;
+      --emerald:   #10b981;
+      --amber:     #f59e0b;
+      --rose:      #f43f5e;
+      --slate:     #94a3b8;
+      --hdr:       #0f172a;
+      --radius:    10px;
+      --shadow:    0 1px 4px rgba(0,0,0,.08), 0 2px 12px rgba(0,0,0,.06);
+    }
+    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    .hdr { background: var(--hdr); color: #fff; padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 58px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .hdr-logo { font-size: 18px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+    .hdr-logo span { color: var(--indigo); }
+    .hdr-spacer { flex: 1; }
+    .sprint-select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .sprint-select option { background: #1e293b; }
+    .refresh-btn { background: none; border: 1px solid #334155; color: #94a3b8; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+    .refresh-btn:hover { border-color: var(--indigo); color: var(--indigo); }
+    .current-badge { background: #065f46; color: #6ee7b7; font-size: 11px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+    .member-badge { background: #1e3a5f; color: #93c5fd; font-size: 11px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+
+    /* ── Nav tabs ── */
+    .nav { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; gap: 4px; overflow-x: auto; }
+    .nav-tab { padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--muted); border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s; }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--indigo); border-bottom-color: var(--indigo); }
+
+    /* ── Layout ── */
+    .page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .section-title { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 14px; }
+
+    /* ── KPI Cards ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow); }
+    .kpi-card.tier3 { background: #f8fafc; border-style: dashed; border-color: #cbd5e1; }
+    .kpi-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
+    .kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 6px; }
+    .kpi-value.green { color: var(--emerald); }
+    .kpi-value.amber { color: var(--amber); }
+    .kpi-value.red   { color: var(--rose); }
+    .kpi-trend { font-size: 12px; font-weight: 500; }
+    .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .tier3-label { font-size: 11px; font-weight: 600; color: #94a3b8; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-top: 6px; }
+
+    /* ── Chart cards ── */
+    .chart-row { display: grid; gap: 16px; margin-bottom: 24px; }
+    .chart-row-2 { grid-template-columns: 1fr 1fr; }
+    .chart-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+    @media (max-width: 900px) { .chart-row-2, .chart-row-3 { grid-template-columns: 1fr; } }
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .chart-card-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .chart-card-title .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
+    .badge-tier2 { background: #dbeafe; color: #1d4ed8; }
+    .badge-tier3 { background: #fef3c7; color: #92400e; }
+
+    /* ── Comparison table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #f8fafc; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: #fafbfc; }
+    .td-good  { color: var(--emerald); font-weight: 600; }
+    .td-warn  { color: var(--amber);   font-weight: 600; }
+    .td-bad   { color: var(--rose);    font-weight: 600; }
+    .td-muted { color: var(--muted); }
+
+    /* ── Notice ── */
+    .notice { display: flex; gap: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius); padding: 14px 16px; font-size: 13px; color: #1e40af; margin-bottom: 20px; }
+    .notice-icon { font-size: 16px; flex-shrink: 0; }
+    .notice-amber { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .notice-slate  { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+
+    /* ── Spinner ── */
+    .spinner-wrap { display: flex; align-items: center; justify-content: center; height: 200px; }
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--indigo); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Plan pills ── */
+    .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+    .plan-pill { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; }
+    .plan-pill strong { display: block; font-size: 13px; margin-bottom: 2px; color: var(--text); }
+    .plan-pill span { color: var(--muted); }
+
+    /* ── Engineer bars ── */
+    .eng-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .eng-bar { height: 10px; border-radius: 99px; background: var(--indigo); min-width: 4px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+/*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Design decisions embedded per user request (not shown separately):
+ *
+ * Q1 — Isolation of QA work in a mixed-team ADO project:
+ *   AMR-Systems hosts both Systems engineers and QA engineers.  User Stories are
+ *   filtered by AssignedTo (qa_team_members in config.yaml) because the QA member
+ *   is doing the testing work.  Bugs are filtered by CreatedBy because the QA
+ *   member is the one who found and filed the defect — NOT AssignedTo, which points
+ *   to the developer fixing it.  The sb_qa tag provides a tag-based override so
+ *   ad-hoc items are captured without needing exact name matching.
+ *
+ * Q2 — Tier 2 test plan data from a different ADO project:
+ *   Test Plans live in 'sootballs'; the same PAT works cross-project.  The suite-
+ *   level testCaseCount API returns 0 for all plans (confirmed 2026-05-11) because
+ *   test cases are linked at plan level, not as suite children.  WIQL on
+ *   WorkItemType='Test Case' with AutomationStatus field is the correct path.
+ *   The Test Plans tab shows aggregate counts with a migration-pending notice so
+ *   management understands the data lives in a separate project today.
+ *
+ * Q3 — Visual hierarchy for 5-min stand-up vs. full sprint review:
+ *   Overview first: gauge + 5 KPI cards → 30-second read for stand-up.
+ *   Trends second: multi-sprint line chart → context for sprint review.
+ *   Bugs + Engineers last: drill-down for root-cause analysis.
+ *   Tier 3 KPIs show amber placeholder cards (not hidden) so management sees the
+ *   intended full picture and understands what's pending approval.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── API helpers ──────────────────────────────────────────────────────────────
+
+function useFetch(url, deps = []) {
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+  const [tick, setTick]       = useState(0);
+
+  const refresh = useCallback(() => setTick(t => t + 1), []);
+
+  useEffect(() => {
+    if (!url) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(url)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [url, tick, ...deps]);
+
+  return { data, loading, error, refresh };
+}
+
+// ── ECharts wrapper ──────────────────────────────────────────────────────────
+
+function EChart({ option, height = 300 }) {
+  const ref   = useRef(null);
+  const chart = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    if (!chart.current) chart.current = echarts.init(ref.current);
+    chart.current.setOption(option, true);
+  }, [JSON.stringify(option)]);
+
+  useEffect(() => {
+    const obs = new ResizeObserver(() => chart.current?.resize());
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
+  return <div ref={ref} style={{ height }} />;
+}
+
+// ── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KPICard({ label, value, unit = '', trend, lowerBetter = false, sub, tier = 1 }) {
+  if (tier === 3) return (
+    <div className="kpi-card tier3">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.4 }}>—</div>
+      <span className="tier3-label">⏳ Awaiting Mgmt Approval</span>
+      <div className="kpi-sub">See TIER3_CHANGES.md</div>
+    </div>
+  );
+
+  let valClass = '';
+  if (value !== null && value !== undefined) {
+    const n = Number(value);
+    if (!isNaN(n)) {
+      if (lowerBetter) valClass = n <= 15 ? 'green' : n <= 30 ? 'amber' : 'red';
+      else             valClass = n >= 75 ? 'green' : n >= 50 ? 'amber' : 'red';
+    }
+  }
+
+  let trendEl = null;
+  if (trend !== undefined && trend !== null) {
+    const better = lowerBetter ? trend < 0 : trend > 0;
+    const color  = better ? 'var(--emerald)' : trend === 0 ? '#94a3b8' : 'var(--rose)';
+    trendEl = <div className="kpi-trend" style={{ color }}>
+      {trend > 0 ? '▲' : trend < 0 ? '▼' : '—'} {Math.abs(trend)}{unit} vs prev
+    </div>;
+  }
+
+  return (
+    <div className="kpi-card">
+      <div className="kpi-label">{label}</div>
+      <div className={`kpi-value ${valClass}`}>
+        {value !== null && value !== undefined ? `${value}${unit}` : '—'}
+      </div>
+      {trendEl}
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+// ── Spinner ───────────────────────────────────────────────────────────────────
+
+function Spinner() {
+  return <div className="spinner-wrap"><div className="spinner" /></div>;
+}
+
+// ── Gauge ─────────────────────────────────────────────────────────────────────
+
+function HealthGauge({ score }) {
+  const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#f43f5e';
+  const label = score >= 75 ? 'On Track' : score >= 50 ? 'Needs Attention' : 'At Risk';
+
+  const option = {
+    series: [{
+      type: 'gauge',
+      startAngle: 200, endAngle: -20,
+      min: 0, max: 100,
+      radius: '90%',
+      pointer: { show: false },
+      progress: { show: true, width: 20, itemStyle: { color } },
+      axisLine: { lineStyle: { width: 20, color: [[1, '#e2e8f0']] } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      detail: {
+        valueAnimation: true,
+        fontSize: 36, fontWeight: 700, color,
+        formatter: '{value}',
+        offsetCenter: [0, '10%'],
+      },
+      title: { fontSize: 13, color: '#64748b', offsetCenter: [0, '35%'] },
+      data: [{ value: score, name: label }],
+    }],
+  };
+  return <EChart option={option} height={220} />;
+}
+
+// ── Pages ─────────────────────────────────────────────────────────────────────
+
+function delta(curr, prev, key) {
+  if (!curr || !prev) return null;
+  const d = Math.round((curr[key] - prev[key]) * 10) / 10;
+  return d;
+}
+
+function colorClass(val, good = 'td-good', warn = 'td-warn', bad = 'td-bad', lowerBetter = false) {
+  if (val === null || val === undefined) return 'td-muted';
+  const n = Number(val);
+  if (isNaN(n)) return '';
+  if (lowerBetter) return n <= 15 ? good : n <= 30 ? warn : bad;
+  return n >= 75 ? good : n >= 50 ? warn : bad;
+}
+
+// ── Overview Page ─────────────────────────────────────────────────────────────
+
+function OverviewPage({ sprintLabel }) {
+  const { data: kpi, loading } = useFetch(`/api/kpi/summary?sprint=${encodeURIComponent(sprintLabel)}`);
+  const { data: trends } = useFetch('/api/kpi/trends');
+
+  const prevKpi = trends && kpi
+    ? (() => {
+        const idx = trends.findIndex(t => t.sprint === kpi.sprint);
+        return idx > 0 ? trends[idx - 1] : null;
+      })()
+    : null;
+
+  const last3 = trends ? trends.slice(-3) : [];
+
+  if (loading) return <Spinner />;
+  if (!kpi) return <div className="page" style={{color:'#ef4444'}}>Failed to load data. Check ADO_PAT and config.</div>;
+
+  return (
+    <div className="page">
+      {/* KPI Cards row */}
+      <div className="section-title">Sprint Health Indicators</div>
+      <div className="kpi-grid">
+        <KPICard label="Completion Rate" value={kpi.completion_rate} unit="%" trend={delta(kpi, prevKpi, 'completion_rate')} sub={`${kpi.completed_user_stories} / ${kpi.total_user_stories} stories`} />
+        <KPICard label="Bug Count" value={kpi.bug_count} trend={prevKpi ? kpi.bug_count - prevKpi.bug_count : null} lowerBetter sub={`${kpi.resolved_bugs} resolved`} />
+        <KPICard label="Bug Resolution" value={kpi.bug_resolution_rate} unit="%" trend={delta(kpi, prevKpi, 'bug_resolution_rate')} sub={`${kpi.resolved_bugs} of ${kpi.bug_count}`} />
+        <KPICard label="Unplanned Work" value={kpi.unplanned_rate} unit="%" trend={delta(kpi, prevKpi, 'unplanned_rate')} lowerBetter sub={`${kpi.unplanned_count} stories added mid-sprint`} />
+        <KPICard label="Carry-Over Rate" value={kpi.carry_over_rate} unit="%" trend={delta(kpi, prevKpi, 'carry_over_rate')} lowerBetter sub={`${kpi.carry_over_count} stories from prior sprint`} />
+        <KPICard label="Defect Density" value={kpi.defect_density} trend={delta(kpi, prevKpi, 'defect_density')} lowerBetter sub="bugs per user story" />
+        {/* Tier 3 placeholders */}
+        <KPICard label="Estimation Slip %" tier={3} />
+        <KPICard label="CI Stability %" tier={3} />
+      </div>
+
+      {/* Gauge + Bug state distribution */}
+      <div className="chart-row chart-row-2">
+        <div className="chart-card">
+          <div className="chart-card-title">Overall QA Health Score</div>
+          <HealthGauge score={kpi.health_score} />
+          <div style={{textAlign:'center', fontSize:12, color:'var(--muted)', marginTop:8}}>
+            Weighted: Completion 35% · Bug Resolution 25% · Unplanned 20% · Carry-Over 20%
+          </div>
+        </div>
+        <div className="chart-card">
+          <div className="chart-card-title">User Story State Distribution</div>
+          <EChart height={220} option={{
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 12 } },
+            series: [{
+              type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'],
+              label: { show: false },
+              data: Object.entries(kpi.state_breakdown || {}).map(([name, value]) => ({
+                name, value,
+                itemStyle: {
+                  color: name === 'Completed' ? '#10b981' : name === 'In Progress' ? '#6366f1' :
+                         name === 'New' ? '#94a3b8' : name === 'Deferred' ? '#f59e0b' :
+                         name === 'QA Testing' ? '#8b5cf6' : '#f43f5e'
+                }
+              })),
+            }],
+          }} />
+        </div>
+      </div>
+
+      {/* Bug state distribution */}
+      {kpi.bug_count > 0 && (
+        <div className="chart-row chart-row-2" style={{marginBottom:24}}>
+          <div className="chart-card">
+            <div className="chart-card-title">Bug State Breakdown</div>
+            <EChart height={200} option={{
+              tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+              legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 12 } },
+              series: [{
+                type: 'pie', radius: ['40%', '68%'], center: ['35%', '50%'],
+                label: { show: false },
+                data: Object.entries(kpi.bug_state_breakdown || {}).map(([name, value]) => ({
+                  name, value,
+                  itemStyle: {
+                    color: (name === 'Closed' || name === 'Completed') ? '#10b981' :
+                           name === 'Reported' ? '#94a3b8' : name === 'Assigned' ? '#6366f1' :
+                           name === 'Postponed' ? '#f59e0b' : name === 'Duplicate' ? '#cbd5e1' :
+                           name === 'Not a Bug' ? '#e2e8f0' : name === 'Blocked' ? '#f43f5e' : '#64748b'
+                  }
+                })),
+              }],
+            }} />
+          </div>
+          <div className="chart-card">
+            <div className="chart-card-title">Velocity — Story Count</div>
+            <EChart height={200} option={{
+              tooltip: { trigger: 'axis' },
+              xAxis: { type: 'category', data: ['Completed', 'In Progress', 'Carry-Over', 'Unplanned'], axisLabel: { fontSize: 11 } },
+              yAxis: { type: 'value', minInterval: 1 },
+              grid: { left: 40, right: 16, top: 16, bottom: 36 },
+              series: [{
+                type: 'bar', barMaxWidth: 48,
+                data: [
+                  { value: kpi.completed_user_stories, itemStyle: { color: '#10b981' } },
+                  { value: kpi.wip_count,              itemStyle: { color: '#6366f1' } },
+                  { value: kpi.carry_over_count,       itemStyle: { color: '#f59e0b' } },
+                  { value: kpi.unplanned_count,        itemStyle: { color: '#f43f5e' } },
+                ],
+                label: { show: true, position: 'top', fontSize: 11 },
+              }],
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* 3-sprint comparison */}
+      {last3.length > 1 && (
+        <>
+          <div className="section-title">Sprint Comparison (last {last3.length})</div>
+          <div className="chart-card" style={{marginBottom:24}}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    {last3.map(s => <th key={s.sprint}>{s.sprint}{s.sprint === kpi.sprint ? ' ★' : ''}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['Completion Rate',    'completion_rate',    '%', false],
+                    ['Bug Count',          'bug_count',          '',  true],
+                    ['Bug Resolution',     'bug_resolution_rate','%', false],
+                    ['Unplanned Rate',     'unplanned_rate',     '%', true],
+                    ['Carry-Over Rate',    'carry_over_rate',    '%', true],
+                    ['Defect Density',     'defect_density',     '',  true],
+                    ['MTTR (days)',        'mttr_days',          '',  true],
+                    ['Health Score',       'health_score',       '',  false],
+                  ].map(([label, key, unit, lb]) => (
+                    <tr key={key}>
+                      <td style={{fontWeight:500}}>{label}</td>
+                      {last3.map(s => (
+                        <td key={s.sprint} className={colorClass(s[key], 'td-good','td-warn','td-bad', lb)}>
+                          {s[key] !== null && s[key] !== undefined ? `${s[key]}${unit}` : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Trends Page ───────────────────────────────────────────────────────────────
+
+function TrendsPage() {
+  const { data: trends, loading } = useFetch('/api/kpi/trends');
+  if (loading) return <Spinner />;
+  if (!trends || trends.length === 0) return <div className="page"><p>No trend data yet.</p></div>;
+
+  const labels = trends.map(t => t.sprint);
+  const mkSeries = (name, key, color) => ({
+    name, type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+    data: trends.map(t => t[key]),
+    lineStyle: { width: 2, color },
+    itemStyle: { color },
+  });
+
+  const trendOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 50, right: 24, top: 24, bottom: 80 },
+    xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 11, rotate: 30 } },
+    yAxis: [
+      { type: 'value', name: '%', nameTextStyle: { fontSize: 10 }, axisLabel: { formatter: '{value}%', fontSize: 10 }, min: 0, max: 100 },
+      { type: 'value', name: 'Count', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
+    ],
+    series: [
+      mkSeries('Completion Rate %',  'completion_rate',    '#6366f1'),
+      mkSeries('Bug Resolution %',   'bug_resolution_rate','#10b981'),
+      mkSeries('Unplanned Rate %',   'unplanned_rate',     '#f59e0b'),
+      mkSeries('Carry-Over Rate %',  'carry_over_rate',    '#f43f5e'),
+      { ...mkSeries('Bug Count', 'bug_count', '#94a3b8'), yAxisIndex: 1, lineStyle: { type: 'dashed', width: 2, color: '#94a3b8' } },
+      { ...mkSeries('Defect Density','defect_density','#0ea5e9'), yAxisIndex: 1, lineStyle: { type: 'dashed', width: 2, color: '#0ea5e9' } },
+    ],
+  };
+
+  const healthOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 50, right: 24, top: 16, bottom: 48 },
+    xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 11, rotate: 30 } },
+    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}', fontSize: 10 } },
+    visualMap: { show: false, min: 0, max: 100, inRange: { color: ['#f43f5e', '#f59e0b', '#10b981'] } },
+    series: [{
+      type: 'bar', data: trends.map(t => t.health_score), barMaxWidth: 40,
+      label: { show: true, position: 'top', fontSize: 10 },
+    }],
+  };
+
+  return (
+    <div className="page">
+      <div className="section-title">KPI Trends Across Sprints</div>
+      <div className="chart-card" style={{ marginBottom: 24 }}>
+        <div className="chart-card-title">Sprint-over-Sprint KPI Trends</div>
+        <EChart option={trendOption} height={360} />
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+          Solid lines: percentage metrics (left axis) · Dashed lines: count metrics (right axis)
+        </div>
+      </div>
+      <div className="chart-row chart-row-2">
+        <div className="chart-card">
+          <div className="chart-card-title">Health Score per Sprint</div>
+          <EChart option={healthOption} height={250} />
+        </div>
+        <div className="chart-card">
+          <div className="section-title" style={{marginBottom:12}}>Sprint Summary Table</div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sprint</th><th>Stories</th><th>Done %</th><th>Bugs</th><th>Bug Res %</th><th>Health</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trends.map(t => (
+                  <tr key={t.sprint}>
+                    <td style={{fontWeight:500,whiteSpace:'nowrap'}}>{t.sprint}</td>
+                    <td>{t.total_user_stories}</td>
+                    <td className={colorClass(t.completion_rate)}>{t.completion_rate}%</td>
+                    <td>{t.bug_count}</td>
+                    <td className={colorClass(t.bug_resolution_rate)}>{t.bug_resolution_rate}%</td>
+                    <td className={colorClass(t.health_score)}>{t.health_score}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Bugs Page ─────────────────────────────────────────────────────────────────
+
+function BugsPage({ sprintLabel }) {
+  const { data: bugs, loading } = useFetch(`/api/bugs?sprint=${encodeURIComponent(sprintLabel)}`);
+  if (loading) return <Spinner />;
+  if (!bugs) return <div className="page"><p>No bug data.</p></div>;
+
+  const stateColors = { Closed:'#10b981',Completed:'#10b981',Reported:'#94a3b8',Assigned:'#6366f1',Postponed:'#f59e0b',Duplicate:'#cbd5e1','Not a Bug':'#e2e8f0',Blocked:'#f43f5e' };
+
+  const stateOption = {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie', radius: ['42%', '68%'], center: ['38%', '50%'],
+      label: { show: false },
+      data: Object.entries(bugs.state_distribution || {}).map(([name, value]) => ({
+        name, value, itemStyle: { color: stateColors[name] || '#64748b' }
+      })),
+    }],
+  };
+
+  const byReporter = Object.entries(bugs.by_reporter || {}).sort((a,b) => b[1]-a[1]).slice(0,10);
+  const reporterOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 130, right: 24, top: 12, bottom: 24 },
+    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: byReporter.map(([n]) => n.split(' ')[0]), axisLabel: { fontSize: 11 } },
+    series: [{ type: 'bar', barMaxWidth: 24, data: byReporter.map(([,v]) => v), itemStyle: { color: '#6366f1' }, label: { show: true, position: 'right', fontSize: 10 } }],
+  };
+
+  return (
+    <div className="page">
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>
+        <KPICard label="Total Bugs" value={bugs.total} />
+        <KPICard label="Resolved" value={bugs.resolved} sub={bugs.total ? `${Math.round(bugs.resolved/bugs.total*100)}%` : '0%'} />
+        <KPICard label="MTTR" value={bugs.mttr_days} unit=" days" lowerBetter sub="mean time to resolve" />
+        <KPICard label="Test Exec Hours" tier={3} />
+        <KPICard label="Auto Coverage %" tier={3} />
+      </div>
+
+      <div className="chart-row chart-row-2">
+        <div className="chart-card">
+          <div className="chart-card-title">Bug State Distribution</div>
+          <EChart option={stateOption} height={240} />
+        </div>
+        <div className="chart-card">
+          <div className="chart-card-title">Bugs Reported by QA Member</div>
+          {byReporter.length > 0
+            ? <EChart option={reporterOption} height={240} />
+            : <div style={{color:'var(--muted)',fontSize:13,padding:'60px 0',textAlign:'center'}}>No reporter data — check QA member config</div>
+          }
+        </div>
+      </div>
+
+      {bugs.items && bugs.items.length > 0 && (
+        <div className="chart-card">
+          <div className="chart-card-title">Recent Bugs</div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Title</th><th>State</th><th>Priority</th><th>Reporter</th><th>Created</th><th>Closed</th></tr>
+              </thead>
+              <tbody>
+                {bugs.items.slice(0, 30).map(b => (
+                  <tr key={b.id}>
+                    <td className="td-muted">{b.id}</td>
+                    <td style={{ maxWidth: 300 }}>{b.title}</td>
+                    <td><span style={{ background: (b.state==='Closed'||b.state==='Completed') ? '#d1fae5' : b.state==='Reported' ? '#f1f5f9' : '#fef3c7', color: (b.state==='Closed'||b.state==='Completed') ? '#065f46' : '#92400e', padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:600 }}>{b.state}</span></td>
+                    <td className="td-muted">{b.priority || '—'}</td>
+                    <td>{b.reporter || '—'}</td>
+                    <td className="td-muted">{b.created || '—'}</td>
+                    <td className="td-muted">{b.closed || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Per-Engineer Page ─────────────────────────────────────────────────────────
+
+function EngineerPage({ sprintLabel }) {
+  const { data: engs, loading } = useFetch(`/api/engineers?sprint=${encodeURIComponent(sprintLabel)}`);
+  if (loading) return <Spinner />;
+  if (!engs || engs.length === 0) return (
+    <div className="page">
+      <div className="notice notice-amber">
+        <span className="notice-icon">⚠️</span>
+        <div>No QA engineer data found for this sprint. Make sure QA team member names in <code>config.yaml</code> match the ADO display names exactly, or items are tagged <code>sb_qa</code>.</div>
+      </div>
+    </div>
+  );
+
+  const maxStories = Math.max(...engs.map(e => e.stories), 1);
+
+  const engBarOption = {
+    tooltip: { trigger: 'axis' },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 110, right: 24, top: 12, bottom: 50 },
+    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: engs.map(e => e.name.split(' ')[0]), axisLabel: { fontSize: 11 } },
+    series: [
+      { name: 'Completed', type: 'bar', stack: 'a', data: engs.map(e => e.completed), itemStyle: { color: '#10b981' } },
+      { name: 'In Progress / Open', type: 'bar', stack: 'a', data: engs.map(e => e.stories - e.completed), itemStyle: { color: '#e2e8f0' } },
+    ],
+  };
+
+  return (
+    <div className="page">
+      <div className="chart-row chart-row-2">
+        <div className="chart-card">
+          <div className="chart-card-title">Story Completion by Engineer</div>
+          <EChart option={engBarOption} height={Math.max(220, engs.length * 38)} />
+        </div>
+        <div className="chart-card">
+          <div className="chart-card-title">Bugs Reported by Engineer</div>
+          <EChart height={Math.max(220, engs.length * 38)} option={{
+            tooltip: { trigger: 'axis' },
+            grid: { left: 110, right: 24, top: 12, bottom: 24 },
+            xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+            yAxis: { type: 'category', data: engs.map(e => e.name.split(' ')[0]), axisLabel: { fontSize: 11 } },
+            series: [{
+              type: 'bar', barMaxWidth: 20, itemStyle: { color: '#f43f5e' },
+              data: engs.map(e => e.bugs_reported),
+              label: { show: true, position: 'right', fontSize: 10 },
+            }],
+          }} />
+        </div>
+      </div>
+      <div className="chart-card">
+        <div className="chart-card-title">Per-Engineer Summary</div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Engineer</th><th>Stories</th><th>Completed</th><th>Completion %</th><th>Story Points</th><th>Bugs Reported</th><th>Bugs Resolved</th></tr>
+            </thead>
+            <tbody>
+              {engs.map(e => (
+                <tr key={e.name}>
+                  <td style={{ fontWeight: 600 }}>{e.name}</td>
+                  <td>{e.stories}</td>
+                  <td>{e.completed}</td>
+                  <td className={colorClass(e.completion_rate)}>{e.completion_rate}%</td>
+                  <td className="td-muted">{e.points > 0 ? e.points : '—'}</td>
+                  <td>{e.bugs_reported || '—'}</td>
+                  <td>{e.bugs_resolved > 0 ? e.bugs_resolved : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Test Plans Page (Tier 2) ───────────────────────────────────────────────────
+
+function TestPlansPage() {
+  const { data, loading } = useFetch('/api/testplans');
+  if (loading) return <Spinner />;
+
+  const tc = data?.test_case_summary || {};
+  const plans = data?.plans || [];
+
+  const autoOption = tc.total ? {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie', radius: ['50%', '72%'], center: ['50%', '50%'],
+      label: { show: true, formatter: '{b}\n{d}%', fontSize: 12 },
+      data: [
+        { name: 'Automated',     value: tc.automated,     itemStyle: { color: '#10b981' } },
+        { name: 'Not Automated', value: tc.not_automated, itemStyle: { color: '#e2e8f0' } },
+      ],
+    }],
+  } : null;
+
+  return (
+    <div className="page">
+      <div className="notice">
+        <span className="notice-icon">ℹ️</span>
+        <div>
+          <strong>Data source:</strong> Test Plans in the <code>sootballs</code> ADO project.&nbsp;
+          {data?.migration_note}
+        </div>
+      </div>
+
+      {tc.total > 0 && (
+        <>
+          <div className="section-title">Test Case Overview (sootballs project)</div>
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', marginBottom:24 }}>
+            <KPICard label="Total Test Cases" value={tc.total} sub="across all plans" />
+            <KPICard label="Automated" value={tc.automated} sub={`${tc.automation_rate}% of total`} />
+            <KPICard label="Not Automated" value={tc.not_automated} lowerBetter />
+            <KPICard label="Automation Rate" value={tc.automation_rate} unit="%" />
+          </div>
+          <div className="chart-row chart-row-2" style={{marginBottom:24}}>
+            <div className="chart-card">
+              <div className="chart-card-title">Automation Coverage <span className="badge badge-tier2">Tier 2 · sootballs project</span></div>
+              <EChart option={autoOption} height={260} />
+            </div>
+            <div className="chart-card">
+              <div className="chart-card-title">Tier 3 KPIs — Pending Approval <span className="badge badge-tier3">Awaiting Mgmt Sign-off</span></div>
+              <div style={{padding:'16px 0'}}>
+                {[
+                  ['Sprint-level Automation Linking', 'Link test plans to sprint iterations in AMR project'],
+                  ['Estimation Slip Rate (exact)',     'Requires TargetDate to be set on all User Stories'],
+                  ['CI Test Stability %',             'Requires ci tag on tasks OR Build:Read PAT scope'],
+                  ['Test Execution Hours',            'Requires team to log CompletedWork on QA Tasks'],
+                ].map(([title, desc]) => (
+                  <div key={title} style={{display:'flex',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
+                    <span style={{fontSize:18}}>⏳</span>
+                    <div><div style={{fontWeight:600,fontSize:13}}>{title}</div><div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>{desc}</div></div>
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:8,fontSize:12,color:'var(--muted)'}}>See <code>TIER3_CHANGES.md</code> for the full change request document.</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="section-title">Test Plans ({plans.length} plans in sootballs project)</div>
+      <div className="plan-grid">
+        {plans.map(p => (
+          <div key={p.id} className="plan-pill">
+            <strong>{p.name}</strong>
+            <span>{p.iteration || 'No iteration'} · {p.state}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Root App ──────────────────────────────────────────────────────────────────
+
+function App() {
+  const [page, setPage]               = useState('overview');
+  const [sprintLabel, setSprintLabel] = useState('');
+  const { data: sprints }             = useFetch('/api/sprints');
+  const { data: healthData }          = useFetch('/api/health');
+
+  // Default to current sprint on load
+  useEffect(() => {
+    if (!sprints || sprintLabel) return;
+    const cur = sprints.find(s => s.is_current) || sprints.filter(s => s.is_past).slice(-1)[0] || sprints[0];
+    if (cur) setSprintLabel(cur.label);
+  }, [sprints]);
+
+  const current = sprints?.find(s => s.label === sprintLabel);
+  const qaCount = healthData?.qa_members_configured || 0;
+
+  const tabs = [
+    { id: 'overview',  label: '🏠 Overview'      },
+    { id: 'trends',    label: '📈 Trends'         },
+    { id: 'bugs',      label: '🐛 Bug Analytics'  },
+    { id: 'engineers', label: '👤 Per Engineer'   },
+    { id: 'testplans', label: '🧪 Test Plans'     },
+  ];
+
+  const pageEl = (() => {
+    switch (page) {
+      case 'overview':  return <OverviewPage sprintLabel={sprintLabel} />;
+      case 'trends':    return <TrendsPage />;
+      case 'bugs':      return <BugsPage sprintLabel={sprintLabel} />;
+      case 'engineers': return <EngineerPage sprintLabel={sprintLabel} />;
+      case 'testplans': return <TestPlansPage />;
+      default:          return null;
+    }
+  })();
+
+  return (
+    <>
+      <header className="hdr">
+        <div className="hdr-logo">QA Metrics <span>Dashboard</span></div>
+        <div className="hdr-spacer" />
+        {qaCount > 0 && <span className="member-badge">{qaCount} QA member{qaCount !== 1 ? 's' : ''} configured</span>}
+        {current?.is_current && <span className="current-badge">🟢 Active Sprint</span>}
+        <select
+          className="sprint-select"
+          value={sprintLabel}
+          onChange={e => setSprintLabel(e.target.value)}
+        >
+          {(sprints || []).filter(s => !s.is_future).map(s => (
+            <option key={s.label} value={s.label}>
+              {s.label}{s.is_current ? ' (current)' : ''}
+            </option>
+          ))}
+        </select>
+        <button
+          className="refresh-btn"
+          title="Clear cache and refresh"
+          onClick={() => fetch('/api/refresh', {method:'POST'}).then(() => window.location.reload())}
+        >↺</button>
+      </header>
+
+      <nav className="nav">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            className={`nav-tab${page === t.id ? ' active' : ''}`}
+            onClick={() => setPage(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {qaCount === 0 && (
+        <div style={{ padding: '12px 24px' }}>
+          <div className="notice notice-amber">
+            <span className="notice-icon">⚠️</span>
+            <div>
+              No QA team members configured. Edit <code>config.yaml</code> → <code>qa_team_members</code>
+              and add the ADO display names of QA engineers. Items tagged <code>sb_qa</code> will still appear.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pageEl}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
