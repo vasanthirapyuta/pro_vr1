@@ -13,6 +13,11 @@ qa_team_members:
 
 qa_tag: "sb_qa"   # Items with this ADO tag are always included
 
+# CORS origins for the /api/* routes.
+# Empty list (default) allows all origins, which is fine for internal/dev use.
+# Set explicit origins for production, e.g.: ["https://dashboard.internal"]
+cors_origins: []
+
 # Sprint definitions — iteration_path must match ADO exactly (backslash-separated).
 # Dates are ISO-8601 (YYYY-MM-DD), treated as UTC.
 sprints:

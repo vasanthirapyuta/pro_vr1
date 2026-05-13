@@ -96,7 +96,7 @@ These metrics help justify QA headcount and surface sprint-over-sprint trends in
    `iteration` field on the plan (e.g. `AMR\26PI2\PI2 Sprint 4`).
 
 ### Why
-Test Plans currently live in `sootballs` which is a different ADO project from sprint work items (`AMR`).
+Test Plans currently live in `sootballs`, which is a different ADO project from sprint work items (`AMR`).
 The dashboard can already read test case counts from `sootballs` (Tier 2), but sprint-level drill-down
 (e.g. "how many test cases were executed this sprint?", pass/fail rates per sprint) is impossible
 without the plans being in the same project and bound to the same iteration tree.

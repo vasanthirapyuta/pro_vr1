@@ -9,7 +9,9 @@ KPI computation is done server-side so the browser receives plain JSON
 and has no dependency on pandas or any heavy library.
 """
 
+import logging
 import os
+import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,46 +22,78 @@ from flask_cors import CORS
 
 from ado_client import ADOClient
 
-# ── Bootstrap ──────────────────────────────────────────────────────────────
+# ── Logging ────────────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    stream=sys.stderr,
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+# ── Bootstrap ──────────────────────────────────────────────────────────────────
 
 _ROOT = Path(__file__).parent
 _CFG_PATH = os.environ.get("CONFIG_PATH", str(_ROOT / "config.yaml"))
 
-with open(_CFG_PATH) as _f:
-    CFG = yaml.safe_load(_f)
+try:
+    with open(_CFG_PATH) as _f:
+        CFG = yaml.safe_load(_f)
+except FileNotFoundError:
+    logger.critical("Config file not found: %s — set CONFIG_PATH env var", _CFG_PATH)
+    sys.exit(1)
+except yaml.YAMLError as exc:
+    logger.critical("Invalid config.yaml: %s", exc)
+    sys.exit(1)
 
 _PAT = os.environ.get("ADO_PAT", "")
 if not _PAT:
-    import sys
-    print("WARNING: ADO_PAT environment variable is not set. API calls will fail.", file=sys.stderr)
+    logger.warning("ADO_PAT environment variable is not set — all ADO API calls will fail")
 
 ado = ADOClient(
     pat=_PAT,
     project=CFG["ado"]["project"],
     testplans_project=CFG["ado"]["testplans_project"],
+    cache_ttl=int(os.environ.get("CACHE_TTL", "600")),
 )
 
 QA_MEMBERS: list[str] = CFG.get("qa_team_members", [])
 QA_TAG: str = CFG.get("qa_tag", "sb_qa")
 
-# State sets derived from live ADO data (2026-05-11 exploration)
+# State sets derived from live ADO data (2026-05-11)
 US_DONE = {"Completed", "Closed", "Resolved"}
 BUG_DONE = {"Closed", "Completed", "Resolved", "Not a Bug", "Duplicate"}
 
-# ── App ────────────────────────────────────────────────────────────────────
+# ── App ────────────────────────────────────────────────────────────────────────
+
+_debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+_cors_origins = CFG.get("cors_origins") or "*"
 
 app = Flask(__name__, static_folder=str(_ROOT / "frontend"))
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": _cors_origins}})
 
 
-# ── Health ──────────────────────────────────────────────────────────────────
+# ── Error handler ──────────────────────────────────────────────────────────────
+
+@app.errorhandler(Exception)
+def handle_exception(exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.path)
+    return jsonify({"error": "Internal server error", "detail": str(exc)}), 500
+
+
+# ── Health ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok", "qa_members_configured": len(QA_MEMBERS)})
+    return jsonify({
+        "status": "ok",
+        "qa_members_configured": len(QA_MEMBERS),
+        "project": CFG["ado"]["project"],
+    })
 
 
-# ── Sprints ─────────────────────────────────────────────────────────────────
+# ── Sprints ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/sprints")
 def list_sprints():
@@ -77,7 +111,7 @@ def list_sprints():
     return jsonify(result)
 
 
-# ── KPI summary (single sprint) ─────────────────────────────────────────────
+# ── KPI summary (single sprint) ─────────────────────────────────────────────────
 
 @app.get("/api/kpi/summary")
 def kpi_summary():
@@ -90,7 +124,7 @@ def kpi_summary():
     return jsonify(_compute(user_stories, bugs, sprint))
 
 
-# ── Trends (all past + current sprints) ─────────────────────────────────────
+# ── Trends (all past + current sprints) ─────────────────────────────────────────
 
 @app.get("/api/kpi/trends")
 def kpi_trends():
@@ -105,7 +139,7 @@ def kpi_trends():
     return jsonify(results)
 
 
-# ── Per-engineer breakdown ───────────────────────────────────────────────────
+# ── Per-engineer breakdown ───────────────────────────────────────────────────────
 
 @app.get("/api/engineers")
 def engineers():
@@ -126,8 +160,10 @@ def engineers():
             e["completed"] += 1
         e["points"] += us.get("story_points") or 0
 
-    for bug in bugs:
-        # Reporter = CreatedBy for bugs
+    sprint_iter = _canon_iter(sprint["iteration_path"])
+    sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
+
+    for bug in sprint_bugs:
         name = bug.get("created_by") or bug.get("assignee") or "Unassigned"
         e = eng.setdefault(name, _blank_eng(name))
         e["bugs_reported"] += 1
@@ -136,14 +172,18 @@ def engineers():
 
     rows = []
     for e in eng.values():
-        e["completion_rate"] = round(e["completed"] / e["stories"] * 100, 1) if e["stories"] else 0
-        e["bug_resolution_rate"] = round(e["bugs_resolved"] / e["bugs_reported"] * 100, 1) if e["bugs_reported"] else 0
+        e["completion_rate"] = (
+            round(e["completed"] / e["stories"] * 100, 1) if e["stories"] else 0
+        )
+        e["bug_resolution_rate"] = (
+            round(e["bugs_resolved"] / e["bugs_reported"] * 100, 1) if e["bugs_reported"] else 0
+        )
         rows.append(e)
 
     return jsonify(sorted(rows, key=lambda x: -x["stories"]))
 
 
-# ── Bug detail (single sprint) ───────────────────────────────────────────────
+# ── Bug detail (single sprint) ───────────────────────────────────────────────────
 
 @app.get("/api/bugs")
 def bugs_detail():
@@ -153,9 +193,8 @@ def bugs_detail():
 
     bugs = ado.get_bugs(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
 
-    # Filter to bugs actually in this sprint iteration (the query uses UNDER PI)
-    sprint_iter = sprint["iteration_path"].replace("\\\\", "\\")
-    sprint_bugs = [b for b in bugs if sprint_iter in b["iteration"]] or bugs
+    sprint_iter = _canon_iter(sprint["iteration_path"])
+    sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
 
     closed = [
         b for b in sprint_bugs
@@ -174,8 +213,15 @@ def bugs_detail():
         "total": len(sprint_bugs),
         "resolved": sum(1 for b in sprint_bugs if b["state"] in BUG_DONE),
         "state_distribution": dict(Counter(b["state"] for b in sprint_bugs).most_common()),
-        "priority_distribution": dict(Counter(str(b.get("priority") or "—") for b in sprint_bugs).most_common()),
-        "by_reporter": dict(Counter(b.get("created_by") or b.get("assignee") or "Unknown" for b in sprint_bugs).most_common()),
+        "priority_distribution": dict(
+            Counter(str(b.get("priority") or "—") for b in sprint_bugs).most_common()
+        ),
+        "by_reporter": dict(
+            Counter(
+                b.get("created_by") or b.get("assignee") or "Unknown"
+                for b in sprint_bugs
+            ).most_common()
+        ),
         "mttr_days": mttr,
         "items": [
             {
@@ -192,7 +238,7 @@ def bugs_detail():
     })
 
 
-# ── Test Plans (Tier 2 — sootballs project) ──────────────────────────────────
+# ── Test Plans (Tier 2 — sootballs project) ──────────────────────────────────────
 
 @app.get("/api/testplans")
 def testplans():
@@ -219,7 +265,7 @@ def testplans():
     })
 
 
-# ── Cache invalidation ───────────────────────────────────────────────────────
+# ── Cache invalidation ────────────────────────────────────────────────────────────
 
 @app.post("/api/refresh")
 def refresh_cache():
@@ -227,7 +273,7 @@ def refresh_cache():
     return jsonify({"status": "cache cleared"})
 
 
-# ── SPA fallback ─────────────────────────────────────────────────────────────
+# ── SPA fallback ──────────────────────────────────────────────────────────────────
 
 @app.get("/", defaults={"path": ""})
 @app.get("/<path:path>")
@@ -235,16 +281,22 @@ def serve_spa(path):
     return send_from_directory(app.static_folder, "index.html")
 
 
-# ── KPI helpers ───────────────────────────────────────────────────────────────
+# ── KPI helpers ───────────────────────────────────────────────────────────────────
+
+def _canon_iter(path: str) -> str:
+    """Normalise iteration path to single backslashes for exact comparison."""
+    return path.replace("\\\\", "\\")
+
 
 def _resolve_sprint(label: str | None):
+    today = datetime.utcnow().date()
     if not label:
-        today = datetime.utcnow().date()
         for s in CFG["sprints"]:
-            if datetime.fromisoformat(s["start"]).date() <= today <= datetime.fromisoformat(s["end"]).date():
+            start = datetime.fromisoformat(s["start"]).date()
+            end = datetime.fromisoformat(s["end"]).date()
+            if start <= today <= end:
                 return s
-        # Default to most recent past sprint
-        past = [s for s in CFG["sprints"] if datetime.fromisoformat(s["end"]).date() < datetime.utcnow().date()]
+        past = [s for s in CFG["sprints"] if datetime.fromisoformat(s["end"]).date() < today]
         return past[-1] if past else CFG["sprints"][0]
     return next((s for s in CFG["sprints"] if s["label"] == label), None)
 
@@ -260,34 +312,46 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
     completion_rate = round(completed_us / total_us * 100, 1) if total_us else 0
 
     total_pts = sum(us.get("story_points") or 0 for us in user_stories)
-    done_pts = sum(us.get("story_points") or 0 for us in user_stories if us["state"] in US_DONE)
+    done_pts = sum(
+        us.get("story_points") or 0
+        for us in user_stories if us["state"] in US_DONE
+    )
 
     # Unplanned: created after sprint start
-    unplanned = sum(1 for us in user_stories if us.get("created") and us["created"] > sprint_start)
+    unplanned = sum(
+        1 for us in user_stories if us.get("created") and us["created"] > sprint_start
+    )
     unplanned_rate = round(unplanned / total_us * 100, 1) if total_us else 0
 
-    # Carry-over: created >14 days before sprint start → was in a previous sprint
+    # Carry-over: created >14 days before sprint start → lived in a previous sprint
     carry_cutoff = (datetime.fromisoformat(sprint_start) - timedelta(days=14)).date().isoformat()
-    carry_over = sum(1 for us in user_stories if us.get("created") and us["created"] < carry_cutoff)
+    carry_over = sum(
+        1 for us in user_stories if us.get("created") and us["created"] < carry_cutoff
+    )
     carry_over_rate = round(carry_over / total_us * 100, 1) if total_us else 0
 
-    # Sprint completion slip: items closed after sprint end OR still open after sprint end
     if sprint_end < today:
-        slipped = sum(1 for us in user_stories if us.get("closed") and us["closed"] > sprint_end)
+        slipped = sum(
+            1 for us in user_stories if us.get("closed") and us["closed"] > sprint_end
+        )
         still_open = sum(1 for us in user_stories if not us.get("closed"))
         slip_rate = round((slipped + still_open) / total_us * 100, 1) if total_us else 0
     else:
-        slipped = sum(1 for us in user_stories if us.get("closed") and us["closed"] > sprint_end)
+        slipped = sum(
+            1 for us in user_stories if us.get("closed") and us["closed"] > sprint_end
+        )
         slip_rate = round(slipped / total_us * 100, 1) if total_us else 0
 
-    wip = sum(1 for us in user_stories if us["state"] in {"In Progress", "In Review", "QA Testing", "Active"})
+    wip = sum(
+        1 for us in user_stories
+        if us["state"] in {"In Progress", "In Review", "QA Testing", "Active"}
+    )
     wip_rate = round(wip / total_us * 100, 1) if total_us else 0
-
     state_dist = dict(Counter(us["state"] for us in user_stories).most_common())
 
-    # ── Bug KPIs (scoped to this sprint's iteration) ──
-    sprint_iter = sprint["iteration_path"].replace("\\\\", "\\")
-    sprint_bugs = [b for b in bugs if sprint_iter in b["iteration"]] or bugs
+    # ── Bug KPIs (exact match to this sprint's iteration) ──
+    sprint_iter = _canon_iter(sprint["iteration_path"])
+    sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
     total_bugs = len(sprint_bugs)
     resolved_bugs = sum(1 for b in sprint_bugs if b["state"] in BUG_DONE)
     bug_res_rate = round(resolved_bugs / total_bugs * 100, 1) if total_bugs else 0
@@ -299,11 +363,13 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
     ]
     mttr = None
     if closed_bugs:
-        days = [(datetime.fromisoformat(b["closed"]) - datetime.fromisoformat(b["created"])).days for b in closed_bugs]
+        days = [
+            (datetime.fromisoformat(b["closed"]) - datetime.fromisoformat(b["created"])).days
+            for b in closed_bugs
+        ]
         mttr = round(sum(days) / len(days), 1)
 
     bug_state_dist = dict(Counter(b["state"] for b in sprint_bugs).most_common())
-
     health = _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate)
 
     return {
@@ -312,7 +378,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         "start": sprint_start,
         "end": sprint_end,
         "health_score": health,
-        # User Story metrics
         "total_user_stories": total_us,
         "completed_user_stories": completed_us,
         "completion_rate": completion_rate,
@@ -326,7 +391,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         "wip_count": wip,
         "wip_rate": wip_rate,
         "state_breakdown": state_dist,
-        # Bug metrics
         "bug_count": total_bugs,
         "resolved_bugs": resolved_bugs,
         "bug_resolution_rate": bug_res_rate,
@@ -337,7 +401,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
 
 
 def _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate) -> int:
-    # Each dimension scored 25/50/75/100; weighted sum gives 0-100 health index
     def score(val, thresholds, invert=False):
         hi, med, lo = thresholds
         if invert:
@@ -352,9 +415,11 @@ def _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate
 
 
 def _blank_eng(name: str) -> dict:
-    return {"name": name, "stories": 0, "completed": 0, "points": 0.0,
-            "bugs_reported": 0, "bugs_resolved": 0}
+    return {
+        "name": name, "stories": 0, "completed": 0, "points": 0.0,
+        "bugs_reported": 0, "bugs_resolved": 0,
+    }
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5050, host="0.0.0.0")
+    app.run(debug=_debug, port=5050, host="0.0.0.0")
