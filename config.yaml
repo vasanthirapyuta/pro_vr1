@@ -1,0 +1,82 @@
+ado:
+  organization: rapyuta-robotics
+  project: AMR
+  testplans_project: sootballs   # Test Plans live here until migration to AMR is approved
+
+# Full display names exactly as shown in Azure DevOps (Settings → Users).
+# User Stories are filtered by AssignedTo; Bugs are filtered by CreatedBy.
+# Any item tagged with qa_tag is included regardless of assignee.
+qa_team_members:
+  - "Vasanthi Rajkumar"
+  # Add remaining QA team members below:
+  # - "First Last"
+
+qa_tag: "sb_qa"   # Items with this ADO tag are always included
+
+# CORS origins for the /api/* routes.
+# Empty list (default) allows all origins, which is fine for internal/dev use.
+# Set explicit origins for production, e.g.: ["https://dashboard.internal"]
+cors_origins: []
+
+# Sprint definitions — iteration_path must match ADO exactly (backslash-separated).
+# Dates are ISO-8601 (YYYY-MM-DD), treated as UTC.
+sprints:
+  - label: "PI1 Sprint 3"
+    iteration_path: "AMR\\26PI1\\PI1 Sprint 3"
+    start: "2026-02-02"
+    end: "2026-02-13"
+    pi: "26PI1"
+
+  - label: "PI1 Sprint 4"
+    iteration_path: "AMR\\26PI1\\PI1 Sprint 4"
+    start: "2026-02-16"
+    end: "2026-02-27"
+    pi: "26PI1"
+
+  - label: "PI1 Sprint 5"
+    iteration_path: "AMR\\26PI1\\PI1 Sprint 5"
+    start: "2026-03-02"
+    end: "2026-03-13"
+    pi: "26PI1"
+
+  - label: "PI1 Sprint 6"
+    iteration_path: "AMR\\26PI1\\PI1 Sprint 6"
+    start: "2026-03-16"
+    end: "2026-03-27"
+    pi: "26PI1"
+
+  - label: "PI2 Sprint 1"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 1"
+    start: "2026-03-30"
+    end: "2026-04-10"
+    pi: "26PI2"
+
+  - label: "PI2 Sprint 2"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 2"
+    start: "2026-04-13"
+    end: "2026-04-24"
+    pi: "26PI2"
+
+  - label: "PI2 Sprint 3"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 3"
+    start: "2026-04-27"
+    end: "2026-05-08"
+    pi: "26PI2"
+
+  - label: "PI2 Sprint 4"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 4"
+    start: "2026-05-11"
+    end: "2026-05-22"
+    pi: "26PI2"
+
+  - label: "PI2 Sprint 5"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 5"
+    start: "2026-05-25"
+    end: "2026-06-05"
+    pi: "26PI2"
+
+  - label: "PI2 Sprint 6"
+    iteration_path: "AMR\\26PI2\\PI2 Sprint 6"
+    start: "2026-06-08"
+    end: "2026-06-19"
+    pi: "26PI2"
