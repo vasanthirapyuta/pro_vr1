@@ -834,6 +834,226 @@ function TestPlansPage() {
   );
 }
 
+// ── Automation Coverage Page ──────────────────────────────────────────────────
+
+function AutomationPage() {
+  const { data, loading, error } = useFetch('/api/automation_coverage');
+
+  if (loading) return <Spinner />;
+  if (error)   return <ErrorNotice message={error} />;
+  if (!data)   return null;
+
+  const s = data.summary;
+  const pctColor = s.pct_automated_in_ado >= 50 ? '#10b981'
+                 : s.pct_automated_in_ado >= 20 ? '#f59e0b' : '#f43f5e';
+
+  const gaugeOption = {
+    series: [{
+      type: 'gauge', startAngle: 200, endAngle: -20, min: 0, max: 100,
+      radius: '90%', pointer: { show: false },
+      progress: { show: true, width: 20, itemStyle: { color: pctColor } },
+      axisLine: { lineStyle: { width: 20, color: [[1, '#e2e8f0']] } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      detail: {
+        valueAnimation: true, fontSize: 36, fontWeight: 700, color: pctColor,
+        formatter: '{value}%', offsetCenter: [0, '10%'],
+      },
+      title: { fontSize: 13, color: '#64748b', offsetCenter: [0, '38%'] },
+      data: [{ value: s.pct_automated_in_ado, name: 'Automated' }],
+    }],
+  };
+
+  const wiStateEntries = Object.entries(s.amr_wi_state_breakdown || {});
+  const wiStateOption = wiStateEntries.length ? {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'],
+      label: { show: false },
+      data: wiStateEntries.map(([name, value]) => ({
+        name, value,
+        itemStyle: {
+          color: ['Closed','Done','Completed'].includes(name) ? '#10b981'
+               : name === 'Active' ? '#6366f1'
+               : name === 'In Progress' ? '#8b5cf6'
+               : name === 'New' ? '#94a3b8' : '#f59e0b',
+        },
+      })),
+    }],
+  } : null;
+
+  return (
+    <div className="page">
+      <div className="section-title">Automation Coverage — ADO sootballs Test Cases</div>
+
+      <div className="kpi-grid">
+        <KPICard label="Automation Rate" value={s.pct_automated_in_ado} unit="%"
+          sub={`${s.automated_in_ado} of ${s.total_tcs_in_ado} TCs in ADO`} />
+        <KPICard label="Automated TCs" value={s.automated_in_ado}
+          sub="AutomationStatus = Automated" />
+        <KPICard label="Confirmed in Mapping" value={s.confirmed_in_mapping}
+          sub={`${s.todo_in_mapping} TODO entries need tc_id lookup`} />
+        <KPICard label="Pending ADO Apply" value={s.pending_link_to_ado} lowerBetter
+          sub="confirmed in YAML · not yet run --apply" />
+        <KPICard label="AMR WIs (sb_qa)" value={s.amr_wis_total}
+          sub={`${s.amr_wis_with_linked_tcs} linked to confirmed TCs`} />
+      </div>
+
+      <div className="chart-row chart-row-2">
+        <div className="chart-card">
+          <div className="chart-card-title">
+            Automation Rate <span className="badge badge-tier2">Live ADO · sootballs</span>
+          </div>
+          <EChart option={gaugeOption} height={230} />
+          <div style={{ textAlign:'center', fontSize:12, color:'var(--muted)', marginTop:6 }}>
+            {s.confirmed_in_mapping} functions confirmed in mapping ·&nbsp;
+            {s.todo_in_mapping} TODO (tc_id pending)
+          </div>
+        </div>
+        {wiStateOption ? (
+          <div className="chart-card">
+            <div className="chart-card-title">
+              AMR WI State Breakdown <span className="badge badge-tier2">sb_qa tag · AMR project</span>
+            </div>
+            <EChart option={wiStateOption} height={230} />
+          </div>
+        ) : (
+          <div className="chart-card">
+            <div className="chart-card-title">AMR WI State Breakdown</div>
+            <div style={{ padding:'40px 0', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
+              No AMR Work Items tagged <code>sb_qa</code> found.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {data.by_plan.length > 0 && (
+        <>
+          <div className="section-title" style={{ marginTop:4 }}>Per-Plan Automation Progress</div>
+          <div className="chart-card" style={{ marginBottom:24 }}>
+            {data.by_plan.map(p => {
+              const pct = p.confirmed_tcs > 0
+                ? Math.round(p.automated_in_ado / p.confirmed_tcs * 100) : 0;
+              const barColor = pct === 100 ? 'var(--emerald)'
+                             : pct >= 50 ? 'var(--amber)' : 'var(--rose)';
+              return (
+                <div key={p.plan_id} style={{ marginBottom:18 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:13 }}>
+                    <span style={{ fontWeight:500 }}>
+                      {p.plan_name}
+                      <a href={`https://dev.azure.com/rapyuta-robotics/sootballs/_testManagement/define?planId=${p.plan_id}`}
+                        target="_blank" rel="noreferrer"
+                        style={{ marginLeft:6, fontSize:11, color:'var(--indigo)', textDecoration:'none' }}>
+                        ↗
+                      </a>
+                    </span>
+                    <span style={{ color:'var(--muted)', fontSize:12 }}>
+                      {p.automated_in_ado} / {p.confirmed_tcs} automated · {pct}%
+                    </span>
+                  </div>
+                  <div style={{ height:8, background:'#e2e8f0', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${pct}%`, background:barColor,
+                                  borderRadius:4, transition:'width .5s' }} />
+                  </div>
+                  {p.pending_link > 0 && (
+                    <div style={{ fontSize:11, color:'var(--amber)', marginTop:3 }}>
+                      ⚠ {p.pending_link} TC{p.pending_link !== 1 ? 's' : ''} in YAML but
+                      &nbsp;--apply not yet run
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {data.amr_wis.length > 0 && (
+        <>
+          <div className="section-title">AMR Work Items — Automation Backlog (sb_qa tag)</div>
+          <div className="chart-card" style={{ marginBottom:24 }}>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>WI #</th><th>Title</th><th>State</th>
+                    <th>Assignee</th><th>Sprint</th>
+                    <th>Linked TCs</th><th>All Automated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.amr_wis.map(w => {
+                    const done = ['Closed','Done','Completed'].includes(w.state);
+                    const stCls = done ? 'td-good'
+                                : ['Active','In Progress'].includes(w.state) ? 'td-warn'
+                                : 'td-muted';
+                    const sprint = w.iteration ? w.iteration.split('\\').pop() : '—';
+                    return (
+                      <tr key={w.id}>
+                        <td>
+                          <a href={`https://dev.azure.com/rapyuta-robotics/AMR/_workitems/edit/${w.id}`}
+                             target="_blank" rel="noreferrer"
+                             style={{ color:'var(--indigo)', textDecoration:'none', fontWeight:600 }}>
+                            {w.id}
+                          </a>
+                        </td>
+                        <td style={{ maxWidth:300 }}>{w.title}</td>
+                        <td className={stCls}>{w.state}</td>
+                        <td className="td-muted">{w.assignee || '—'}</td>
+                        <td className="td-muted">{sprint}</td>
+                        <td>
+                          {w.linked_count > 0
+                            ? <span style={{ color:'var(--indigo)', fontWeight:600 }}>
+                                {w.linked_count}
+                              </span>
+                            : <span className="td-muted">—</span>}
+                        </td>
+                        <td>
+                          {w.linked_count === 0
+                            ? <span className="td-muted">—</span>
+                            : w.all_automated
+                              ? <span className="td-good">✓ Yes</span>
+                              : <span className="td-warn">⏳ Partial</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {!data.mapping_loaded && (
+        <div className="notice notice-amber">
+          <span className="notice-icon">⚠️</span>
+          <div>
+            <strong>Mapping file not loaded.</strong> Set <code>sootballs_mapping_file</code> in
+            &nbsp;<code>config.yaml</code> (or <code>MAPPING_FILE</code> env var) to the path of
+            &nbsp;<code>qa_tooling/ado_test_mapping.yaml</code> from the sootballs_tests repo.
+            Per-plan progress bars and WI cross-linking require this file.
+          </div>
+        </div>
+      )}
+
+      <div className="notice notice-slate" style={{ marginTop:16 }}>
+        <span className="notice-icon">ℹ</span>
+        <div>
+          <strong>How this dashboard stays up-to-date automatically:</strong>
+          <ol style={{ marginTop:6, paddingLeft:16, lineHeight:1.8, fontSize:12 }}>
+            <li>QA engineer adds/confirms a mapping in <code>qa_tooling/ado_test_mapping.yaml</code></li>
+            <li>PR merged to <code>devel</code> → GitHub Action <em>Link ADO Test Cases on merge</em> fires</li>
+            <li>Action runs <code>link_ado_tests.py --apply --link-wis</code></li>
+            <li>ADO TC flips to <strong>Automated</strong> · AMR WI gets cross-project link + comment</li>
+            <li>Click ↺ above to refresh — numbers update immediately</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Root App ──────────────────────────────────────────────────────────────────
 
 function App() {
@@ -871,22 +1091,24 @@ function App() {
   const qaCount = healthData?.qa_members_configured ?? 0;
 
   const tabs = [
-    { id: 'overview',  label: '🏠 Overview'     },
-    { id: 'trends',    label: '📈 Trends'        },
-    { id: 'bugs',      label: '🐛 Bug Analytics' },
-    { id: 'engineers', label: '👤 Per Engineer'  },
-    { id: 'testplans', label: '🧪 Test Plans'    },
+    { id: 'overview',    label: '🏠 Overview'        },
+    { id: 'trends',      label: '📈 Trends'           },
+    { id: 'bugs',        label: '🐛 Bug Analytics'    },
+    { id: 'engineers',   label: '👤 Per Engineer'     },
+    { id: 'testplans',   label: '🧪 Test Plans'       },
+    { id: 'automation',  label: '🤖 Automation'       },
   ];
 
   const pageEl = (() => {
     const key = `${page}-${sprintLabel}`;
     switch (page) {
-      case 'overview':  return <OverviewPage key={key} sprintLabel={sprintLabel} onCacheRefreshed={fn => { pageRefreshRef.current = fn; }} />;
-      case 'trends':    return <TrendsPage key={key} />;
-      case 'bugs':      return <BugsPage key={key} sprintLabel={sprintLabel} />;
-      case 'engineers': return <EngineerPage key={key} sprintLabel={sprintLabel} />;
-      case 'testplans': return <TestPlansPage key={key} />;
-      default:          return null;
+      case 'overview':   return <OverviewPage key={key} sprintLabel={sprintLabel} onCacheRefreshed={fn => { pageRefreshRef.current = fn; }} />;
+      case 'trends':     return <TrendsPage key={key} />;
+      case 'bugs':       return <BugsPage key={key} sprintLabel={sprintLabel} />;
+      case 'engineers':  return <EngineerPage key={key} sprintLabel={sprintLabel} />;
+      case 'testplans':  return <TestPlansPage key={key} />;
+      case 'automation': return <AutomationPage key={key} />;
+      default:           return null;
     }
   })();
 
