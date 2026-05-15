@@ -61,6 +61,12 @@ ado = ADOClient(
 
 QA_MEMBERS: list[str] = CFG.get("qa_team_members", [])
 QA_TAG: str = CFG.get("qa_tag", "sb_qa")
+# Path to qa_tooling/ado_test_mapping.yaml from the sootballs_tests repo.
+# Override via MAPPING_FILE env var or set sootballs_mapping_file in config.yaml.
+_MAPPING_FILE: str | None = (
+    os.environ.get("MAPPING_FILE")
+    or CFG.get("sootballs_mapping_file")
+)
 
 # State sets derived from live ADO data (2026-05-11)
 US_DONE = {"Completed", "Closed", "Resolved"}
@@ -268,6 +274,23 @@ def testplans():
             "Migration to the 'AMR' project is a tracked initiative (see TIER3_CHANGES.md). "
             "Once migrated, sprint-level automation metrics will be linked directly to sprint iterations."
         ),
+    })
+
+
+# ── Automation Coverage (Tier 2 — sootballs TCs + AMR WIs) ───────────────────────
+
+@app.get("/api/automation_coverage")
+def automation_coverage():
+    """Return test automation coverage combining three data sources:
+      - ado_test_mapping.yaml  (pytest ↔ TC linkage, confirmed + TODO counts)
+      - ADO sootballs          (live AutomationStatus per TC)
+      - ADO AMR (sb_qa tagged) (Work Items driving the automation backlog)
+    """
+    data = ado.get_automation_coverage(_MAPPING_FILE)
+    return jsonify({
+        **data,
+        "mapping_file": _MAPPING_FILE,
+        "mapping_loaded": bool(_MAPPING_FILE and data["summary"]["confirmed_in_mapping"] >= 0),
     })
 
 

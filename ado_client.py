@@ -18,9 +18,11 @@ import hashlib
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
+import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -199,6 +201,176 @@ class ADOClient:
             logger.exception("Failed to fetch test case summary")
             return {"total": 0, "automated": 0, "not_automated": 0, "error": "fetch failed"}
 
+    def get_amr_automation_wis(self, qa_tag: str = "sb_qa") -> list[dict]:
+        """Return all AMR Work Items tagged with qa_tag (default: sb_qa).
+
+        These represent automation tasks — the demand side of the coverage gap.
+        """
+        cache_key = self._make_key("amr_automation_wis", qa_tag)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        query = f"""
+            SELECT [System.Id] FROM WorkItems
+            WHERE [System.TeamProject] = '{_esc(self.project)}'
+              AND [System.Tags] CONTAINS '{_esc(qa_tag)}'
+            ORDER BY [System.ChangedDate] DESC
+        """
+        try:
+            ids = self._wiql(self.project, query)
+        except Exception:
+            logger.exception("Failed WIQL for AMR automation WIs")
+            return []
+
+        if not ids:
+            self._set_cached(cache_key, [])
+            return []
+
+        fields = [
+            "System.Id", "System.Title", "System.State",
+            "System.WorkItemType", "System.AssignedTo", "System.CreatedDate",
+            "System.ChangedDate", "System.Tags", "System.IterationPath",
+        ]
+        items = self._batch_fetch(self.project, ids[:200], fields)
+        result = [self._normalise(item) for item in items]
+        self._set_cached(cache_key, result)
+        return result
+
+    def get_automation_coverage(self, mapping_file: str | None = None) -> dict:
+        """Combine ado_test_mapping.yaml + live ADO TC status + AMR WIs (sb_qa tag).
+
+        Returns a coverage report structured for the dashboard Automation tab:
+          summary      — headline numbers (% automated, mapping stats, WI counts)
+          by_plan      — per test-plan breakdown with progress metrics
+          amr_wis      — AMR work items tagged sb_qa with linked TC counts
+        """
+        cache_key = self._make_key("automation_coverage", mapping_file or "")
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        # 1. Load mapping YAML
+        mappings = _load_mapping(mapping_file)
+        confirmed = [m for m in mappings if not _is_mapping_placeholder(m)]
+
+        # 2. Live TC automation status for confirmed tc_ids
+        tc_ids = list({m["tc_id"] for m in confirmed})
+        tc_details: dict[int, dict] = {}
+        if tc_ids:
+            try:
+                url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
+                resp = self._session.post(
+                    url,
+                    json={
+                        "ids": tc_ids,
+                        "fields": [
+                            "System.Id", "System.Title",
+                            "Microsoft.VSTS.TCM.AutomationStatus",
+                            "Microsoft.VSTS.TCM.AutomatedTestName",
+                        ],
+                    },
+                    params={"api-version": _API_VERSION},
+                    timeout=30,
+                )
+                if resp.ok:
+                    for item in resp.json().get("value", []):
+                        f = item["fields"]
+                        tc_details[f["System.Id"]] = {
+                            "title":       f.get("System.Title", ""),
+                            "status":      f.get("Microsoft.VSTS.TCM.AutomationStatus", "Not Automated"),
+                            "linked_test": f.get("Microsoft.VSTS.TCM.AutomatedTestName", ""),
+                        }
+            except Exception:
+                logger.exception("Failed to fetch TC details for automation coverage")
+
+        # 3. Overall TC summary (all TCs in sootballs, capped at 1 000 for speed)
+        tc_summary = self.get_test_case_summary()
+
+        # 4. AMR WIs with sb_qa tag
+        amr_wis = self.get_amr_automation_wis()
+
+        # 5. Group confirmed mappings by plan
+        plan_map: dict[int, dict] = {}
+        for m in confirmed:
+            pid = m["plan_id"]
+            if pid not in plan_map:
+                plan_map[pid] = {
+                    "plan_id": pid, "confirmed_tcs": 0,
+                    "automated_in_ado": 0, "tc_ids": [], "amr_wi_ids": [],
+                }
+            p = plan_map[pid]
+            p["confirmed_tcs"] += 1
+            p["tc_ids"].append(m["tc_id"])
+            if m.get("amr_wi_id"):
+                p["amr_wi_ids"].append(m["amr_wi_id"])
+            if tc_details.get(m["tc_id"], {}).get("status") == "Automated":
+                p["automated_in_ado"] += 1
+
+        # 6. Resolve plan names from test plans API
+        try:
+            plan_names = {p["id"]: p["name"] for p in self.get_test_plans()}
+        except Exception:
+            plan_names = {}
+
+        by_plan = [
+            {
+                "plan_id": pid,
+                "plan_name": plan_names.get(pid, f"Plan {pid}"),
+                "confirmed_tcs": p["confirmed_tcs"],
+                "automated_in_ado": p["automated_in_ado"],
+                "pending_link": p["confirmed_tcs"] - p["automated_in_ado"],
+                "amr_wi_ids": p["amr_wi_ids"],
+            }
+            for pid, p in sorted(plan_map.items())
+        ]
+
+        # 7. Enrich AMR WIs with linked TC info
+        wi_to_tcs: dict[int, list[int]] = {}
+        for m in confirmed:
+            wi_id = m.get("amr_wi_id")
+            if wi_id:
+                wi_to_tcs.setdefault(wi_id, []).append(m["tc_id"])
+
+        amr_wi_rows = []
+        for w in amr_wis:
+            linked = wi_to_tcs.get(w["id"], [])
+            amr_wi_rows.append({
+                **w,
+                "linked_tc_ids": linked,
+                "linked_count": len(linked),
+                "all_automated": all(
+                    tc_details.get(tc, {}).get("status") == "Automated"
+                    for tc in linked
+                ) if linked else False,
+            })
+
+        # 8. Summary stats
+        automated_confirmed = sum(
+            1 for m in confirmed
+            if tc_details.get(m["tc_id"], {}).get("status") == "Automated"
+        )
+        from collections import Counter
+        wi_states = dict(Counter(w["state"] for w in amr_wis).most_common())
+
+        result = {
+            "summary": {
+                "total_tcs_in_ado":        tc_summary["total"],
+                "automated_in_ado":        tc_summary["automated"],
+                "pct_automated_in_ado":    tc_summary.get("automation_rate", 0),
+                "confirmed_in_mapping":    len(confirmed),
+                "todo_in_mapping":         len(mappings) - len(confirmed),
+                "pending_link_to_ado":     len(confirmed) - automated_confirmed,
+                "amr_wis_total":           len(amr_wis),
+                "amr_wis_with_linked_tcs": sum(1 for w in amr_wi_rows if w["linked_count"] > 0),
+                "amr_wi_state_breakdown":  wi_states,
+            },
+            "by_plan": by_plan,
+            "amr_wis": amr_wi_rows,
+        }
+        self._set_cached(cache_key, result)
+        return result
+
     def invalidate_cache(self) -> None:
         with self._lock:
             self._cache.clear()
@@ -303,3 +475,27 @@ class ADOClient:
 def _esc(value: str) -> str:
     """Escape a value for safe embedding in a single-quoted WIQL string."""
     return value.replace("'", "''")
+
+
+def _load_mapping(mapping_file: str | None) -> list[dict]:
+    """Load mappings list from ado_test_mapping.yaml. Returns [] on any error."""
+    if not mapping_file:
+        return []
+    try:
+        with open(mapping_file) as f:
+            raw = yaml.safe_load(f)
+        return raw.get("mappings", [])
+    except Exception:
+        logger.warning("Could not load mapping file: %s", mapping_file)
+        return []
+
+
+def _is_mapping_placeholder(entry: dict) -> bool:
+    """Mirror of link_ado_tests._is_placeholder — must stay in sync."""
+    if entry.get("tc_id", 0) >= 57000:
+        return True
+    if entry.get("plan_id", 0) == 99999:
+        return True
+    if not entry.get("pytest_method"):
+        return True
+    return False
