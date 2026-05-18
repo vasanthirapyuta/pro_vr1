@@ -1025,11 +1025,20 @@ function AutomationPage() {
         </>
       )}
 
-      {!data.mapping_loaded && (
+      {data.mapping_error && (
         <div className="notice notice-amber">
           <span className="notice-icon">⚠️</span>
           <div>
-            <strong>Mapping file not loaded.</strong> Set <code>sootballs_mapping_file</code> in
+            <strong>Mapping file error.</strong> The file at <code>{data.mapping_file}</code> could
+            not be loaded or has an unexpected schema. Check the server log for details.
+          </div>
+        </div>
+      )}
+      {!data.mapping_loaded && !data.mapping_error && (
+        <div className="notice notice-amber">
+          <span className="notice-icon">⚠️</span>
+          <div>
+            <strong>Mapping file not configured.</strong> Set <code>sootballs_mapping_file</code> in
             &nbsp;<code>config.yaml</code> (or <code>MAPPING_FILE</code> env var) to the path of
             &nbsp;<code>qa_tooling/ado_test_mapping.yaml</code> from the sootballs_tests repo.
             Per-plan progress bars and WI cross-linking require this file.

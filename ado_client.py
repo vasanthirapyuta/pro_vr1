@@ -232,7 +232,7 @@ class ADOClient:
             "System.WorkItemType", "System.AssignedTo", "System.CreatedDate",
             "System.ChangedDate", "System.Tags", "System.IterationPath",
         ]
-        items = self._batch_fetch(self.project, ids[:200], fields)
+        items = self._batch_fetch(self.project, ids, fields)
         result = [self._normalise(item) for item in items]
         self._set_cached(cache_key, result)
         return result
@@ -250,8 +250,14 @@ class ADOClient:
         if cached is not None:
             return cached
 
-        # 1. Load mapping YAML
-        mappings = _load_mapping(mapping_file)
+        # 1. Load mapping YAML — None means file present but malformed
+        mapping_result = _load_mapping(mapping_file)
+        if not mapping_file:
+            mappings, mapping_loaded, mapping_error = [], False, False
+        elif mapping_result is None:
+            mappings, mapping_loaded, mapping_error = [], False, True
+        else:
+            mappings, mapping_loaded, mapping_error = mapping_result, True, False
         confirmed = [m for m in mappings if not _is_mapping_placeholder(m)]
 
         # 2. Live TC automation status for confirmed tc_ids
@@ -354,6 +360,8 @@ class ADOClient:
         wi_states = dict(Counter(w["state"] for w in amr_wis).most_common())
 
         result = {
+            "mapping_loaded": mapping_loaded,
+            "mapping_error":  mapping_error,
             "summary": {
                 "total_tcs_in_ado":        tc_summary["total"],
                 "automated_in_ado":        tc_summary["automated"],
@@ -477,17 +485,54 @@ def _esc(value: str) -> str:
     return value.replace("'", "''")
 
 
-def _load_mapping(mapping_file: str | None) -> list[dict]:
-    """Load mappings list from ado_test_mapping.yaml. Returns [] on any error."""
+def _load_mapping(mapping_file: str | None) -> list[dict] | None:
+    """Load mappings from ado_test_mapping.yaml.
+
+    Returns:
+        list[dict]  — valid mappings (may be empty if file has no entries).
+        []          — mapping_file is None/empty (feature disabled, not an error).
+        None        — file exists but could not be read or fails schema checks;
+                      callers should surface this as a configuration error.
+    """
     if not mapping_file:
         return []
+
     try:
         with open(mapping_file) as f:
             raw = yaml.safe_load(f)
-        return raw.get("mappings", [])
-    except Exception:
-        logger.warning("Could not load mapping file: %s", mapping_file)
-        return []
+    except FileNotFoundError:
+        logger.warning("Mapping file not found: %s", mapping_file)
+        return None
+    except yaml.YAMLError as exc:
+        logger.warning("Could not parse mapping file %s as YAML: %s", mapping_file, exc)
+        return None
+    except Exception as exc:
+        logger.warning("Unexpected error reading mapping file %s: %s", mapping_file, exc)
+        return None
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Mapping file %s: expected a dict root, got %s",
+            mapping_file, type(raw).__name__,
+        )
+        return None
+
+    mappings = raw.get("mappings")
+    if mappings is None:
+        logger.warning(
+            "Mapping file %s missing 'mappings' key. Found keys: %s",
+            mapping_file, list(raw.keys()),
+        )
+        return None
+
+    if not isinstance(mappings, list):
+        logger.warning(
+            "Mapping file %s: 'mappings' must be a list, got %s",
+            mapping_file, type(mappings).__name__,
+        )
+        return None
+
+    return mappings
 
 
 def _is_mapping_placeholder(entry: dict) -> bool:
