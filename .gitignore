@@ -3,6 +3,9 @@ __pycache__/
 .env
 .vscode/
 data/
+uploaded_data/
 *.zip
 *.egg-info
-azure_check_results_*.csv
+*.csv
+*.docx
+generate_doc.py
