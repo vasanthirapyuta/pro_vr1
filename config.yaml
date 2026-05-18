@@ -17,7 +17,9 @@ qa_tag: "sb_qa"   # Items with this ADO tag are always included
 # Used by /api/automation_coverage to join pytest ↔ ADO TC ↔ AMR WI data.
 # Set to null to disable mapping-file enrichment (live ADO stats still shown).
 # Override at runtime via the MAPPING_FILE environment variable.
-sootballs_mapping_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
+# Example (set in a local config override, do not commit user-specific paths):
+#   sootballs_mapping_file: "/home/youruser/path/to/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
+sootballs_mapping_file: null
 
 # CORS origins for the /api/* routes.
 # Empty list (default) allows all origins, which is fine for internal/dev use.

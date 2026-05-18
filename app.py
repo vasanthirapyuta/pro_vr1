@@ -290,7 +290,6 @@ def automation_coverage():
     return jsonify({
         **data,
         "mapping_file": _MAPPING_FILE,
-        "mapping_loaded": bool(_MAPPING_FILE and data["summary"]["confirmed_in_mapping"] >= 0),
     })
 
 
