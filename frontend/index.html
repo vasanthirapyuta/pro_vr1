@@ -834,6 +834,155 @@ function TestPlansPage() {
   );
 }
 
+// ── Feature Coverage Page ─────────────────────────────────────────────────────
+
+function FeatureCoveragePage({ sprintLabel }) {
+  const url = '/api/feature_coverage' + (sprintLabel ? `?sprint=${encodeURIComponent(sprintLabel)}` : '');
+  const { data, loading, error } = useFetch(url);
+  const url2 = '/api/engineer_automation';
+  const { data: engData } = useFetch(url2);
+
+  if (loading) return <Spinner />;
+  if (error)   return <ErrorNotice message={error} />;
+  if (!data)   return null;
+
+  const s = data.summary;
+  const coverageColor = s.overall_coverage_pct >= 70 ? '#10b981'
+                       : s.overall_coverage_pct >= 30 ? '#f59e0b' : '#f43f5e';
+
+  return (
+    <div className="page-root">
+      <div className="section-title">
+        Feature Coverage — Automation Traceability
+        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>
+          Feature → TC → Automated
+        </span>
+      </div>
+
+      {/* Summary KPI row */}
+      <div className="kpi-row">
+        <div className="kpi-card">
+          <div className="kpi-value" style={{ color: coverageColor }}>
+            {s.overall_coverage_pct}%
+          </div>
+          <div className="kpi-label">Overall TC Coverage</div>
+          <div className="kpi-sub">{s.automated_tcs} / {s.total_tcs} TCs automated</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-value" style={{ color: '#10b981' }}>{s.fully_covered}</div>
+          <div className="kpi-label">Fully Covered</div>
+          <div className="kpi-sub">100% TCs automated</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-value" style={{ color: '#f59e0b' }}>{s.partially_covered}</div>
+          <div className="kpi-label">Partially Covered</div>
+          <div className="kpi-sub">Some TCs missing</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-value" style={{ color: '#94a3b8' }}>{s.no_tcs_linked}</div>
+          <div className="kpi-label">No TCs Linked</div>
+          <div className="kpi-sub">Need Tested By relation</div>
+        </div>
+      </div>
+
+      {/* Per-Feature table */}
+      <div className="section-title" style={{ marginTop: 24 }}>Per-Feature Breakdown</div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Feature / Story</th><th>Assignee</th><th>State</th>
+              <th style={{ textAlign: 'right' }}>Total TCs</th>
+              <th style={{ textAlign: 'right' }}>Automated</th>
+              <th style={{ textAlign: 'right' }}>Coverage</th>
+              <th>Progress</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data.items || []).map(f => {
+              const pct = f.coverage_pct;
+              const barColor = pct === 100 ? '#10b981' : pct > 0 ? '#f59e0b' : '#e2e8f0';
+              const textColor = pct === 100 ? '#10b981' : pct > 0 ? '#f59e0b' : '#94a3b8';
+              return (
+                <tr key={f.id}>
+                  <td>
+                    <a
+                      href={`https://dev.azure.com/rapyuta-robotics/AMR/_workitems/edit/${f.id}`}
+                      target="_blank" rel="noreferrer"
+                      style={{ color: 'var(--indigo)', textDecoration: 'none' }}
+                    >
+                      {f.id}
+                    </a>
+                  </td>
+                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.title}
+                  </td>
+                  <td>{(f.assignee || '—').split(' ')[0]}</td>
+                  <td><span className="badge" style={{ background: '#e2e8f0', color: '#475569', fontSize: 11 }}>{f.state}</span></td>
+                  <td style={{ textAlign: 'right' }}>{f.total_tcs || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{f.total_tcs ? f.automated_tcs : '—'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: textColor }}>
+                    {f.total_tcs ? `${pct}%` : 'No TCs'}
+                  </td>
+                  <td style={{ width: 120 }}>
+                    {f.total_tcs > 0 && (
+                      <div style={{ background: '#e2e8f0', borderRadius: 4, height: 8, width: '100%' }}>
+                        <div style={{ background: barColor, borderRadius: 4, height: 8, width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {(!data.items || data.items.length === 0) && (
+              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                No Features found for this sprint. Add <code>qa_team_members</code> to config.yaml
+                and ensure Features are tagged or assigned to QA members.
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Engineer automation attribution */}
+      {engData && engData.engineers && engData.engineers.length > 0 && (
+        <>
+          <div className="section-title" style={{ marginTop: 32 }}>
+            Automation Attribution — by Engineer
+            <span className="badge badge-tier2" style={{ marginLeft: 8 }}>from github_pr in YAML</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Engineer (GitHub)</th>
+                  <th style={{ textAlign: 'right' }}>TCs Automated</th>
+                  <th>PRs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {engData.engineers.map(e => (
+                  <tr key={e.engineer}>
+                    <td>{e.engineer}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{e.tcs_automated}</td>
+                    <td style={{ color: 'var(--muted)', fontSize: 12 }}>
+                      {(e.prs || []).map(pr => `#${pr}`).join(', ') || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+            Attribution is based on the <code>github_pr</code> field in <code>ado_test_mapping.yaml</code>.
+            Fill this field (auto-filled by CI on merge) to see complete attribution.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Automation Coverage Page ──────────────────────────────────────────────────
 
 function AutomationPage() {
@@ -1106,6 +1255,7 @@ function App() {
     { id: 'engineers',   label: '👤 Per Engineer'     },
     { id: 'testplans',   label: '🧪 Test Plans'       },
     { id: 'automation',  label: '🤖 Automation'       },
+    { id: 'features',    label: '🎯 Feature Coverage' },
   ];
 
   const pageEl = (() => {
@@ -1117,6 +1267,7 @@ function App() {
       case 'engineers':  return <EngineerPage key={key} sprintLabel={sprintLabel} />;
       case 'testplans':  return <TestPlansPage key={key} />;
       case 'automation': return <AutomationPage key={key} />;
+      case 'features':   return <FeatureCoveragePage key={key} sprintLabel={sprintLabel} />;
       default:           return null;
     }
   })();

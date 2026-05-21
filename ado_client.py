@@ -405,6 +405,158 @@ class ADOClient:
         with self._lock:
             self._cache[key] = (time.monotonic(), data)
 
+    def get_feature_coverage(
+        self, iteration_path: str, qa_members: list[str], qa_tag: str
+    ) -> list[dict]:
+        """Return Feature-level TC automation coverage for a sprint.
+
+        For each Feature in the sprint, counts total TCs linked via 'Tested By'
+        and how many are Automated.  Returns a list of dicts:
+          { id, title, assignee, state, total_tcs, automated_tcs, coverage_pct }
+        """
+        norm_members = sorted({m.strip() for m in qa_members if m and m.strip()})
+        cache_key = self._make_key("feature_coverage", iteration_path, tuple(norm_members), qa_tag)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        member_clause = self._member_or_tag_clause(
+            field="[System.AssignedTo]", members=norm_members, tag=qa_tag
+        )
+        query = f"""
+            SELECT [System.Id] FROM WorkItems
+            WHERE [System.TeamProject] = '{_esc(self.project)}'
+              AND [System.IterationPath] = '{_esc(iteration_path)}'
+              AND [System.WorkItemType] IN ('Feature', 'User Story')
+              {('AND (' + member_clause + ')') if member_clause else ''}
+            ORDER BY [System.Id]
+        """
+        ids = self._wiql(self.project, query)
+        if not ids:
+            self._set_cached(cache_key, [])
+            return []
+
+        fields = [
+            "System.Id", "System.Title", "System.State", "System.AssignedTo",
+            "System.WorkItemType",
+        ]
+        items = self._batch_fetch(self.project, ids, fields)
+        features = [self._normalise(item) for item in items]
+
+        # For each Feature, find linked TCs via relations
+        result = []
+        for feat in features:
+            wi_id = feat["id"]
+            total_tcs = 0
+            automated_tcs = 0
+            try:
+                rel_url = f"{_ADO_ROOT}/{self.project}/_apis/wit/workitems/{wi_id}"
+                rel_resp = self._session.get(
+                    rel_url,
+                    params={"api-version": _API_VERSION, "$expand": "relations"},
+                    timeout=15,
+                )
+                if rel_resp.ok:
+                    relations = rel_resp.json().get("relations", []) or []
+                    tc_ids = [
+                        int(r["url"].rstrip("/").split("/")[-1])
+                        for r in relations
+                        if r.get("rel") == "Microsoft.VSTS.Common.TestedBy-Reverse"
+                    ]
+                    if tc_ids:
+                        total_tcs = len(tc_ids)
+                        # Batch-fetch TC automation status
+                        batch_url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
+                        b = self._session.post(
+                            batch_url,
+                            json={
+                                "ids": tc_ids[:200],
+                                "fields": ["Microsoft.VSTS.TCM.AutomationStatus"],
+                            },
+                            params={"api-version": _API_VERSION},
+                            timeout=15,
+                        )
+                        if b.ok:
+                            automated_tcs = sum(
+                                1 for item in b.json().get("value", [])
+                                if item["fields"].get(
+                                    "Microsoft.VSTS.TCM.AutomationStatus"
+                                ) == "Automated"
+                            )
+            except Exception:
+                pass
+
+            result.append({
+                "id": wi_id,
+                "title": feat.get("title", ""),
+                "assignee": feat.get("assignee", ""),
+                "state": feat.get("state", ""),
+                "type": feat.get("work_item_type", ""),
+                "total_tcs": total_tcs,
+                "automated_tcs": automated_tcs,
+                "coverage_pct": round(automated_tcs / total_tcs * 100, 1) if total_tcs else 0,
+            })
+
+        result.sort(key=lambda x: x["coverage_pct"])
+        self._set_cached(cache_key, result)
+        return result
+
+    def get_engineer_automation(self, mapping_file: str | None = None) -> list[dict]:
+        """Return per-engineer automation counts derived from ado_test_mapping.yaml.
+
+        Uses the github_pr field in YAML entries to attribute TCs to the engineer
+        who wrote the automation (by PR author).  Returns:
+          { engineer, tcs_automated, prs, tc_ids[] }
+        """
+        cache_key = self._make_key("engineer_automation", mapping_file or "")
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        mapping_result = _load_mapping(mapping_file)
+        if not mapping_result:
+            return []
+
+        mappings = [m for m in mapping_result if not _is_mapping_placeholder(m)]
+
+        # Group TC IDs by github_pr number
+        by_pr: dict[int, list[int]] = {}
+        for m in mappings:
+            pr = m.get("github_pr")
+            if pr and isinstance(pr, int):
+                by_pr.setdefault(pr, []).append(m["tc_id"])
+
+        if not by_pr:
+            self._set_cached(cache_key, [])
+            return []
+
+        # Fetch PR author from GitHub API for each PR (no auth required for public repos)
+        by_engineer: dict[str, dict] = {}
+        import time as _time
+        for pr_num, tc_ids in sorted(by_pr.items()):
+            author = f"PR #{pr_num}"  # fallback if GitHub API unavailable
+            try:
+                gh_resp = self._session.get(
+                    f"https://api.github.com/repos/rapyuta-robotics/sootballs_tests/pulls/{pr_num}",
+                    timeout=10,
+                )
+                if gh_resp.ok:
+                    author = gh_resp.json().get("user", {}).get("login", author)
+            except Exception:
+                pass
+            eng = by_engineer.setdefault(author, {
+                "engineer": author, "tcs_automated": 0, "prs": [], "tc_ids": [],
+            })
+            eng["tcs_automated"] += len(tc_ids)
+            eng["tc_ids"].extend(tc_ids)
+            if pr_num not in eng["prs"]:
+                eng["prs"].append(pr_num)
+            _time.sleep(0.05)
+
+        result = sorted(by_engineer.values(), key=lambda x: -x["tcs_automated"])
+        self._set_cached(cache_key, result)
+        return result
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _wiql(self, project: str, query: str) -> list[int]:

@@ -293,6 +293,56 @@ def automation_coverage():
     })
 
 
+# ── Feature Coverage (Feature/Story → TC Automation) ─────────────────────────
+
+@app.get("/api/feature_coverage")
+def feature_coverage():
+    """Return Feature-level TC automation coverage for a sprint.
+
+    Each Feature/User Story in the sprint shows:
+      - total TCs linked via 'Tested By' relation
+      - how many are Automated
+      - coverage percentage
+    """
+    sprint = _resolve_sprint(request.args.get("sprint"))
+    if sprint is None:
+        return jsonify({"error": "Sprint not found"}), 404
+
+    data = ado.get_feature_coverage(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+    total_features = len(data)
+    fully_covered  = sum(1 for f in data if f["coverage_pct"] == 100 and f["total_tcs"] > 0)
+    no_tcs         = sum(1 for f in data if f["total_tcs"] == 0)
+    total_tcs      = sum(f["total_tcs"] for f in data)
+    automated_tcs  = sum(f["automated_tcs"] for f in data)
+
+    return jsonify({
+        "sprint": sprint["label"],
+        "summary": {
+            "total_features": total_features,
+            "fully_covered": fully_covered,
+            "partially_covered": total_features - fully_covered - no_tcs,
+            "no_tcs_linked": no_tcs,
+            "total_tcs": total_tcs,
+            "automated_tcs": automated_tcs,
+            "overall_coverage_pct": round(automated_tcs / total_tcs * 100, 1) if total_tcs else 0,
+        },
+        "items": data,
+    })
+
+
+# ── Engineer Automation (who automated what) ──────────────────────────────────
+
+@app.get("/api/engineer_automation")
+def engineer_automation():
+    """Return per-engineer automation counts from ado_test_mapping.yaml github_pr field."""
+    data = ado.get_engineer_automation(_MAPPING_FILE)
+    total_tcs = sum(e["tcs_automated"] for e in data)
+    return jsonify({
+        "total_tcs_attributed": total_tcs,
+        "engineers": data,
+    })
+
+
 # ── Cache invalidation ────────────────────────────────────────────────────────────
 
 @app.post("/api/refresh")
