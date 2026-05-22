@@ -67,6 +67,11 @@ _MAPPING_FILE: str | None = (
     os.environ.get("MAPPING_FILE")
     or CFG.get("sootballs_mapping_file")
 )
+# Path to feature_coverage_cache.json produced by traverse_feature_coverage.py.
+_COVERAGE_CACHE_FILE: str | None = (
+    os.environ.get("COVERAGE_CACHE_FILE")
+    or CFG.get("feature_coverage_cache_file")
+)
 
 # State sets derived from live ADO data (2026-05-11)
 US_DONE = {"Completed", "Closed", "Resolved"}
@@ -328,6 +333,32 @@ def feature_coverage():
         },
         "items": data,
     })
+
+
+# ── Feature Coverage v2 (cache-driven — from traverse_feature_coverage.py) ───
+
+@app.get("/api/feature_coverage_v2")
+def feature_coverage_v2():
+    """Return Feature automation coverage from the pre-built traversal cache.
+
+    The cache is produced by:
+      ADO_PAT=<pat> python3 qa_tooling/traverse_feature_coverage.py --apply
+
+    Query params:
+      sprint=<label>  Filter to a single sprint (e.g. "PI2 Sprint 4").
+                      Omit to return all Features across all sprints.
+
+    Response includes:
+      cache_status    "ok" | "no_cache_configured" | "cache_file_not_found" | "parse_error"
+      generated_at    ISO timestamp of when the cache was last built
+      data_quality    Coverage and confidence breakdown (formal vs parsed PR links)
+      summary         Headline numbers: total_features, coverage %, etc.
+      features        List of Feature records with tc_ids, coverage %, engineers
+      unresolved      Features where no PR link was found (need manual follow-up)
+    """
+    sprint = request.args.get("sprint")  # optional filter
+    data = ado.get_feature_coverage_v2(_COVERAGE_CACHE_FILE, sprint_filter=sprint or None)
+    return jsonify(data)
 
 
 # ── Engineer Automation (who automated what) ──────────────────────────────────

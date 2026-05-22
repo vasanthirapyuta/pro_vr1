@@ -379,6 +379,96 @@ class ADOClient:
         self._set_cached(cache_key, result)
         return result
 
+    def get_feature_coverage_v2(
+        self,
+        cache_file: str | None,
+        sprint_filter: str | None = None,
+    ) -> dict:
+        """
+        Serve Feature coverage data from the pre-built cache file produced by
+        qa_tooling/traverse_feature_coverage.py.
+
+        No ADO API calls are made at query time — this is purely cache-driven.
+        The cache is refreshed by running traverse_feature_coverage.py --apply
+        (nightly CI job or manual run).
+
+        Args:
+            cache_file:    Path to feature_coverage_cache.json.  None → return empty result.
+            sprint_filter: If given, filter features list to those whose 'sprint' field
+                           matches this label exactly.  None → return all features.
+
+        Returns a dict with keys:
+          generated_at, data_quality, features (filtered), unresolved,
+          cache_status, sprint_filter_applied
+        """
+        import json as _json
+        from pathlib import Path as _Path
+
+        _empty = {
+            "generated_at": None,
+            "data_quality": {},
+            "features": [],
+            "unresolved": [],
+            "cache_status": "no_cache_configured",
+            "sprint_filter_applied": sprint_filter,
+        }
+
+        if not cache_file:
+            return {**_empty, "cache_status": "no_cache_configured"}
+
+        path = _Path(cache_file)
+        if not path.is_file():
+            return {**_empty, "cache_status": "cache_file_not_found",
+                    "cache_file": str(path)}
+
+        try:
+            data = _json.loads(path.read_text())
+        except Exception as exc:
+            logger.warning("Failed to parse coverage cache %s: %s", path, exc)
+            return {**_empty, "cache_status": "parse_error"}
+
+        features = data.get("features", [])
+        unresolved = data.get("unresolved", [])
+
+        if sprint_filter:
+            features   = [f for f in features   if f.get("sprint") == sprint_filter]
+            unresolved = [u for u in unresolved if u.get("sprint") == sprint_filter]
+
+        # Recompute summary over filtered set
+        total_features   = len(features)
+        fully_covered    = sum(1 for f in features if f.get("coverage_pct", 0) == 100
+                               and f.get("total_tcs", 0) > 0)
+        partially_covered = sum(1 for f in features if 0 < f.get("coverage_pct", 0) < 100)
+        no_tcs_linked    = sum(1 for f in features if f.get("total_tcs", 0) == 0)
+        total_tcs        = sum(f.get("total_tcs", 0) for f in features)
+        automated_tcs    = sum(f.get("automated_count", 0) for f in features)
+        formal_links     = sum(1 for f in features if f.get("pr_confidence") == "formal")
+        parsed_links     = sum(1 for f in features if f.get("pr_confidence") == "parsed")
+
+        return {
+            "generated_at":         data.get("generated_at"),
+            "query":                data.get("query", {}),
+            "data_quality":         data.get("data_quality", {}),
+            "cache_status":         "ok",
+            "sprint_filter_applied": sprint_filter,
+            "summary": {
+                "total_features":     total_features,
+                "fully_covered":      fully_covered,
+                "partially_covered":  partially_covered,
+                "no_tcs_linked":      no_tcs_linked,
+                "total_tcs":          total_tcs,
+                "automated_tcs":      automated_tcs,
+                "overall_coverage_pct": (
+                    round(automated_tcs / total_tcs * 100, 1) if total_tcs else 0
+                ),
+                "formal_pr_links":    formal_links,
+                "parsed_pr_links":    parsed_links,
+                "unresolved_features": len(unresolved),
+            },
+            "features":   features,
+            "unresolved": unresolved,
+        }
+
     def invalidate_cache(self) -> None:
         with self._lock:
             self._cache.clear()

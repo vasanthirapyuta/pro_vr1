@@ -21,6 +21,27 @@ qa_tag: "sb_qa"   # Items with this ADO tag are always included
 #   sootballs_mapping_file: "/home/youruser/path/to/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
 sootballs_mapping_file: null
 
+# Path to feature_coverage_cache.json produced by traverse_feature_coverage.py.
+# Set to null to disable /api/feature_coverage_v2 (endpoint returns empty cache message).
+# Override at runtime via the COVERAGE_CACHE_FILE environment variable.
+# Example:
+#   feature_coverage_cache_file: "/home/youruser/sootballs_tests/qa_tooling/feature_coverage_cache.json"
+feature_coverage_cache_file: null
+
+# Legacy iteration path → sprint label mapping for work items created before
+# 2026-02-01 in the sootballs ADO project.
+#
+# Run this to discover what paths exist:
+#   ADO_PAT=<pat> python3 qa_tooling/traverse_feature_coverage.py --discover-iteration-paths
+#
+# Then fill in each path → sprint label below.  Use the same sprint labels as
+# defined in the sprints list above.  Paths use double-backslash in YAML.
+#
+# Example (fill with actual paths from the discovery command above):
+#   "sootballs\\26PI1\\PI1 Sprint 1": "PI1 Sprint 1"
+#   "sootballs\\26PI1\\PI1 Sprint 2": "PI1 Sprint 2"
+legacy_iteration_map: {}
+
 # CORS origins for the /api/* routes.
 # Empty list (default) allows all origins, which is fine for internal/dev use.
 # Set explicit origins for production, e.g.: ["https://dashboard.internal"]
