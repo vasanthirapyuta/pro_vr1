@@ -40,7 +40,101 @@ feature_coverage_cache_file: null
 # Example (fill with actual paths from the discovery command above):
 #   "sootballs\\26PI1\\PI1 Sprint 1": "PI1 Sprint 1"
 #   "sootballs\\26PI1\\PI1 Sprint 2": "PI1 Sprint 2"
-legacy_iteration_map: {}
+legacy_iteration_map:
+  # ── 2026.PI1 (sootballs) — directly overlap with dashboard sprint labels ────
+  # These few sootballs USs were created before the AMR migration cut-over (Feb 1).
+  "sootballs\\2026.PI1\\PI1 Sprint 1": "PI1 Sprint 1"
+  "sootballs\\2026.PI1\\PI1 Sprint 3": "PI1 Sprint 3"
+  "sootballs\\2026.PI1\\PI1 Sprint 4": "PI1 Sprint 4"
+
+  # ── 2025.PI4 (sootballs) — QA sprints immediately before AMR migration ──────
+  "sootballs\\2025.PI4": "Legacy PI4"
+  "sootballs\\2025.PI4\\PI4 Sprint 2": "Legacy PI4 Sprint 2"
+  "sootballs\\2025.PI4\\PI4 Sprint 3": "Legacy PI4 Sprint 3"
+  "sootballs\\2025.PI4\\PI4 Sprint 4": "Legacy PI4 Sprint 4"
+  "sootballs\\2025.PI4\\PI4 Sprint 5": "Legacy PI4 Sprint 5"
+  "sootballs\\2025.PI4\\PI4 Sprint 6": "Legacy PI4 Sprint 6"
+
+  # ── 2025.PI3 (sootballs) ─────────────────────────────────────────────────────
+  "sootballs\\2025.PI3": "Legacy PI3 2025"
+  "sootballs\\2025.PI3\\Sprint 50": "Legacy PI3 Sprint 50"
+  "sootballs\\2025.PI3\\Sprint 51": "Legacy PI3 Sprint 51"
+  "sootballs\\2025.PI3\\Sprint 52 (3)": "Legacy PI3 Sprint 52"
+  "sootballs\\2025.PI3\\Sprint 53 (4)": "Legacy PI3 Sprint 53"
+  "sootballs\\2025.PI3\\Sprint 54 (5)": "Legacy PI3 Sprint 54"
+  "sootballs\\2025.PI3\\Sprint 55 (6)": "Legacy PI3 Sprint 55"
+
+  # ── 2025.PI2 (sootballs) ─────────────────────────────────────────────────────
+  "sootballs\\2025.PI2": "Legacy PI2 2025"
+  "sootballs\\2025.PI2\\Sprint 44": "Legacy PI2 Sprint 44"
+  "sootballs\\2025.PI2\\Sprint 45": "Legacy PI2 Sprint 45"
+  "sootballs\\2025.PI2\\Sprint 46": "Legacy PI2 Sprint 46"
+  "sootballs\\2025.PI2\\Sprint 47": "Legacy PI2 Sprint 47"
+  "sootballs\\2025.PI2\\Sprint 48": "Legacy PI2 Sprint 48"
+  "sootballs\\2025.PI2\\Sprint 49": "Legacy PI2 Sprint 49"
+
+  # ── 2025.PI1 (sootballs) ─────────────────────────────────────────────────────
+  "sootballs\\2025.PI1": "Legacy PI1 2025"
+  "sootballs\\2025.PI1\\Sprint 38": "Legacy PI1 Sprint 38"
+  "sootballs\\2025.PI1\\Sprint 39": "Legacy PI1 Sprint 39"
+  "sootballs\\2025.PI1\\Sprint 41": "Legacy PI1 Sprint 41"
+  "sootballs\\2025.PI1\\Sprint 42": "Legacy PI1 Sprint 42"
+  "sootballs\\2025.PI1\\Sprint 43": "Legacy PI1 Sprint 43"
+
+  # ── 2024.PI4 (sootballs) ─────────────────────────────────────────────────────
+  "sootballs\\2024.PI4": "Legacy PI4 2024"
+  "sootballs\\2024.PI4\\Sprint 31": "Legacy 2024 Sprint 31"
+  "sootballs\\2024.PI4\\sprint31":  "Legacy 2024 Sprint 31"
+  "sootballs\\2024.PI4\\Sprint 32": "Legacy 2024 Sprint 32"
+  "sootballs\\2024.PI4\\Sprint 33": "Legacy 2024 Sprint 33"
+  "sootballs\\2024.PI4\\Sprint 34": "Legacy 2024 Sprint 34"
+  "sootballs\\2024.PI4\\Sprint 35": "Legacy 2024 Sprint 35"
+  "sootballs\\2024.PI4\\Sprint 36": "Legacy 2024 Sprint 36"
+  "sootballs\\2024.PI4\\Sprint 37": "Legacy 2024 Sprint 37"
+
+  # ── 2024.PI3 (sootballs) ─────────────────────────────────────────────────────
+  "sootballs\\2024.PI3": "Legacy PI3 2024"
+  "sootballs\\2024.PI3\\Sprint 26": "Legacy 2024 Sprint 26"
+  "sootballs\\2024.PI3\\Sprint 27": "Legacy 2024 Sprint 27"
+  "sootballs\\2024.PI3\\Sprint 28": "Legacy 2024 Sprint 28"
+  "sootballs\\2024.PI3\\Sprint 29": "Legacy 2024 Sprint 29"
+  "sootballs\\2024.PI3\\Sprint 30": "Legacy 2024 Sprint 30"
+
+  # ── sootballs-us-engineering sprints ─────────────────────────────────────────
+  # Dev/engineering team sprint area — QA USs here were cross-functional.
+  # Sprint numbers (32–62) correspond to the same sequential numbering above.
+  "sootballs\\sootballs-us-engineering sprints": "Legacy Eng Sprints"
+  "sootballs\\sootballs-us-engineering sprints\\sprint32": "Legacy Eng Sprint 32"
+  "sootballs\\sootballs-us-engineering sprints\\sprint33": "Legacy Eng Sprint 33"
+  "sootballs\\sootballs-us-engineering sprints\\sprint34": "Legacy Eng Sprint 34"
+  "sootballs\\sootballs-us-engineering sprints\\sprint35": "Legacy Eng Sprint 35"
+  "sootballs\\sootballs-us-engineering sprints\\sprint36": "Legacy Eng Sprint 36"
+  "sootballs\\sootballs-us-engineering sprints\\sprint37": "Legacy Eng Sprint 37"
+  "sootballs\\sootballs-us-engineering sprints\\sprint38": "Legacy Eng Sprint 38"
+  "sootballs\\sootballs-us-engineering sprints\\sprint39": "Legacy Eng Sprint 39"
+  "sootballs\\sootballs-us-engineering sprints\\sprint40": "Legacy Eng Sprint 40"
+  "sootballs\\sootballs-us-engineering sprints\\sprint41": "Legacy Eng Sprint 41"
+  "sootballs\\sootballs-us-engineering sprints\\sprint42": "Legacy Eng Sprint 42"
+  "sootballs\\sootballs-us-engineering sprints\\sprint43": "Legacy Eng Sprint 43"
+  "sootballs\\sootballs-us-engineering sprints\\sprint44": "Legacy Eng Sprint 44"
+  "sootballs\\sootballs-us-engineering sprints\\sprint45": "Legacy Eng Sprint 45"
+  "sootballs\\sootballs-us-engineering sprints\\sprint47": "Legacy Eng Sprint 47"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint 48": "Legacy Eng Sprint 48"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint49": "Legacy Eng Sprint 49"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint50": "Legacy Eng Sprint 50"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint51": "Legacy Eng Sprint 51"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint52": "Legacy Eng Sprint 52"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint53": "Legacy Eng Sprint 53"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint54": "Legacy Eng Sprint 54"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint55": "Legacy Eng Sprint 55"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint56": "Legacy Eng Sprint 56"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint58": "Legacy Eng Sprint 58"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint60": "Legacy Eng Sprint 60"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint61": "Legacy Eng Sprint 61"
+  "sootballs\\sootballs-us-engineering sprints\\Sprint62": "Legacy Eng Sprint 62"
+
+  # ── Unclassified sootballs root items ─────────────────────────────────────────
+  "sootballs": "Legacy Unclassified"
 
 # CORS origins for the /api/* routes.
 # Empty list (default) allows all origins, which is fine for internal/dev use.
@@ -50,6 +144,20 @@ cors_origins: []
 # Sprint definitions — iteration_path must match ADO exactly (backslash-separated).
 # Dates are ISO-8601 (YYYY-MM-DD), treated as UTC.
 sprints:
+  # PI1 Sprint 1 and 2 predate the AMR migration (sootballs project).
+  # iteration_path is a placeholder — these sprints are found via legacy_iteration_map above.
+  - label: "PI1 Sprint 1"
+    iteration_path: "sootballs\\2026.PI1\\PI1 Sprint 1"
+    start: "2026-01-05"
+    end: "2026-01-16"
+    pi: "26PI1"
+
+  - label: "PI1 Sprint 2"
+    iteration_path: "sootballs\\2026.PI1\\PI1 Sprint 2"
+    start: "2026-01-19"
+    end: "2026-01-30"
+    pi: "26PI1"
+
   - label: "PI1 Sprint 3"
     iteration_path: "AMR\\26PI1\\PI1 Sprint 3"
     start: "2026-02-02"
