@@ -31,42 +31,53 @@ ado:
 qa_team_roster:
   # IMPORTANT: names must match ADO display names exactly (Settings → Users).
   # Verify each name in ADO if queries return 0 items for a member.
-  # "from" dates below are approximate — update to the actual date each person
-  # joined / was assigned to the QA team for accurate historical sprint filtering.
+  #
+  # ── Currently active ──────────────────────────────────────────────────────────
   - name: "Vasanthi Rajkumar"
     from: "2024-01-01"
-    to:                          # null = still active
+    to:
   - name: "Sugashini Subramanian"
-    from: "2024-01-01"          # TODO: set actual QA join date
+    from: "2024-01-01"
     to:
-  - name: "Devaharish Murugesan"
-    from: "2024-01-01"          # TODO: set actual QA join date
-    to:
-  - name: "Tarani Jothiraj"
-    from: "2024-01-01"          # TODO: set actual QA join date
+  - name: "Sanjaypkhandan Moovendar"
+    from: "2025-06-12"
     to:
   - name: "Sathish Suryamoorthy"
-    from: "2024-01-01"          # TODO: set actual QA join date
+    from: "2025-12-10"
     to:
   - name: "Saisurya Akella"
-    from: "2024-01-01"          # TODO: set actual QA join date
+    from: "2025-12-10"
     to:
-  # Template for future changes:
-  # - name: "Former QA Member"
-  #   from: "2024-03-01"
-  #   to: "2025-08-31"           # left QA team end of Aug 2025
-  #
-  # - name: "Temporary Loan"
-  #   from: "2026-04-01"
-  #   to: "2026-05-31"           # loaned to QA for PI2 only
+
+  # ── Former / interim members ───────────────────────────────────────────────────
+  - name: "Buvaneshwari Chandrasekaran"
+    from: "2024-10-04"
+    to: "2025-06-20"
+  - name: "Gururagavendra V"
+    from: "2024-10-09"
+    to: "2025-08-12"
+  - name: "Devaharish Murugesan"
+    from: "2024-09-05"
+    to: "2025-01-10"
+  - name: "Nandhana Girirajan"
+    from: "2025-01-20"
+    to: "2025-06-26"
+  - name: "Tarani Jothiraj"
+    from: "2024-11-13"
+    to: "2025-03-28"
+  - name: "Adhithya Sankar"
+    from: "2025-04-23"
+    to: "2025-08-22"
+  - name: "Shreenidhi Balaji"
+    from: "2025-12-18"
+    to: "2026-02-02"
 
 # Flat fallback — used only if qa_team_roster is empty.
-# Keep in sync with current active members for tools that don't use the roster.
+# Contains currently active members only.
 qa_team_members:
   - "Vasanthi Rajkumar"
   - "Sugashini Subramanian"
-  - "Devaharish Murugesan"
-  - "Tarani Jothiraj"
+  - "Sanjaypkhandan Moovendar"
   - "Sathish Suryamoorthy"
   - "Saisurya Akella"
 
