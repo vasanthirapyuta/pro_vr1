@@ -29,16 +29,29 @@ ado:
 # automation work for one sprint — just tag their US with sb_qa).
 
 qa_team_roster:
+  # IMPORTANT: names must match ADO display names exactly (Settings → Users).
+  # Verify each name in ADO if queries return 0 items for a member.
+  # "from" dates below are approximate — update to the actual date each person
+  # joined / was assigned to the QA team for accurate historical sprint filtering.
   - name: "Vasanthi Rajkumar"
     from: "2024-01-01"
     to:                          # null = still active
-  # Add all current and past QA members below.
-  # Examples (uncomment and fill in real names + dates):
-  #
-  # - name: "Second QA Member"
-  #   from: "2025-01-01"
-  #   to:
-  #
+  - name: "Sugashini S"
+    from: "2024-01-01"          # TODO: set actual QA join date
+    to:
+  - name: "Devaharish Murugesan"
+    from: "2024-01-01"          # TODO: set actual QA join date
+    to:
+  - name: "Tarani Jothiraj"
+    from: "2024-01-01"          # TODO: set actual QA join date
+    to:
+  - name: "Sathish S"
+    from: "2024-01-01"          # TODO: set actual QA join date
+    to:
+  - name: "Saisurya Akella"
+    from: "2024-01-01"          # TODO: set actual QA join date
+    to:
+  # Template for future changes:
   # - name: "Former QA Member"
   #   from: "2024-03-01"
   #   to: "2025-08-31"           # left QA team end of Aug 2025
@@ -51,6 +64,11 @@ qa_team_roster:
 # Keep in sync with current active members for tools that don't use the roster.
 qa_team_members:
   - "Vasanthi Rajkumar"
+  - "Sugashini S"
+  - "Devaharish Murugesan"
+  - "Tarani Jothiraj"
+  - "Sathish S"
+  - "Saisurya Akella"
 
 qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of assignee
 
