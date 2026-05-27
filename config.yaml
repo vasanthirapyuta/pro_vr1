@@ -57,6 +57,9 @@ qa_team_roster:
     to:
 
   # ── Former / interim members ───────────────────────────────────────────────────
+  - name: "Marius-Mihail Gurgu"
+    from: "2024-07-18"
+    to: "2024-12-12"            # sootballs project only (pre-AMR migration)
   - name: "Buvaneshwari Chandrasekaran"
     from: "2024-10-04"
     to: "2025-06-20"
