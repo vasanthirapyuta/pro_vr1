@@ -48,6 +48,13 @@ qa_team_roster:
   - name: "Saisurya Akella"
     from: "2025-12-10"
     to:
+  # AMR-only automation contributors (post-migration, no sootballs history)
+  - name: "Srishanth Tallapelly"
+    from: "2026-02-17"
+    to:
+  - name: "Durgaprasad Jamula"
+    from: "2026-02-17"
+    to:
 
   # ── Former / interim members ───────────────────────────────────────────────────
   - name: "Buvaneshwari Chandrasekaran"
@@ -80,6 +87,8 @@ qa_team_members:
   - "Sanjaypkhandan Moovendar"
   - "Sathish Suryamoorthy"
   - "Saisurya Akella"
+  - "Srishanth Tallapelly"
+  - "Durgaprasad Jamula"
 
 qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of assignee
 
