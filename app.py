@@ -21,7 +21,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from ado_client import ADOClient
+from ado_client import ADOClient, resolve_qa_members
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -59,8 +59,14 @@ ado = ADOClient(
     cache_ttl=int(os.environ.get("CACHE_TTL", "600")),
 )
 
-QA_MEMBERS: list[str] = CFG.get("qa_team_members", [])
 QA_TAG: str = CFG.get("qa_tag", "sb_qa")
+# QA_MEMBERS is the flat fallback list; use _qa_members_for_sprint(sprint) for per-sprint accuracy.
+QA_MEMBERS: list[str] = resolve_qa_members(CFG)   # all-time union — for non-sprint endpoints
+
+
+def _qa_members_for_sprint(sprint: dict) -> list[str]:
+    """Return QA members active during this sprint using the date-range roster."""
+    return resolve_qa_members(CFG, sprint.get("start"), sprint.get("end"))
 # Path to qa_tooling/ado_test_mapping.yaml from the sootballs_tests repo.
 # Override via MAPPING_FILE env var or set sootballs_mapping_file in config.yaml.
 _MAPPING_FILE: str | None = (
@@ -136,8 +142,9 @@ def kpi_summary():
     if sprint is None:
         return jsonify({"error": "Sprint not found"}), 404
 
-    user_stories = ado.get_user_stories(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
-    bugs = ado.get_bugs(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+    members = _qa_members_for_sprint(sprint)
+    user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
+    bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
     return jsonify(_compute(user_stories, bugs, sprint))
 
 
@@ -150,8 +157,9 @@ def kpi_trends():
     for sprint in CFG["sprints"]:
         if datetime.fromisoformat(sprint["start"]).date() > today:
             continue
-        user_stories = ado.get_user_stories(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
-        bugs = ado.get_bugs(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+        members = _qa_members_for_sprint(sprint)
+        user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
+        bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
         results.append(_compute(user_stories, bugs, sprint))
     return jsonify(results)
 
@@ -164,8 +172,9 @@ def engineers():
     if sprint is None:
         return jsonify({"error": "Sprint not found"}), 404
 
-    user_stories = ado.get_user_stories(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
-    bugs = ado.get_bugs(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+    members = _qa_members_for_sprint(sprint)
+    user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
+    bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
 
     eng: dict[str, dict] = {}
 
@@ -208,7 +217,7 @@ def bugs_detail():
     if sprint is None:
         return jsonify({"error": "Sprint not found"}), 404
 
-    bugs = ado.get_bugs(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+    bugs = ado.get_bugs(sprint["iteration_path"], _qa_members_for_sprint(sprint), QA_TAG)
 
     sprint_iter = _canon_iter(sprint["iteration_path"])
     sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
@@ -313,7 +322,7 @@ def feature_coverage():
     if sprint is None:
         return jsonify({"error": "Sprint not found"}), 404
 
-    data = ado.get_feature_coverage(sprint["iteration_path"], QA_MEMBERS, QA_TAG)
+    data = ado.get_feature_coverage(sprint["iteration_path"], _qa_members_for_sprint(sprint), QA_TAG)
     total_features = len(data)
     fully_covered  = sum(1 for f in data if f["coverage_pct"] == 100 and f["total_tcs"] > 0)
     no_tcs         = sum(1 for f in data if f["total_tcs"] == 0)

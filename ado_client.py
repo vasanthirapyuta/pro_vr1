@@ -18,6 +18,7 @@ import hashlib
 import logging
 import threading
 import time
+from datetime import date as _date
 from pathlib import Path
 from typing import Any
 
@@ -725,6 +726,56 @@ class ADOClient:
 def _esc(value: str) -> str:
     """Escape a value for safe embedding in a single-quoted WIQL string."""
     return value.replace("'", "''")
+
+
+def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: str | None = None) -> list[str]:
+    """Return QA team members active during the given sprint date range.
+
+    Uses qa_team_roster (date-range entries) when present; falls back to
+    the flat qa_team_members list.
+
+    Args:
+        cfg:          Parsed config.yaml dict.
+        sprint_start: ISO date string (YYYY-MM-DD) — first day of the sprint.
+                      Pass None to get all members ever on the team (union).
+        sprint_end:   ISO date string (YYYY-MM-DD) — last day of the sprint.
+                      Pass None to use sprint_start as both bounds.
+
+    A roster entry is included when its tenure overlaps with [sprint_start, sprint_end]:
+        entry.from <= sprint_end  AND  (entry.to is null OR entry.to >= sprint_start)
+    """
+    roster = cfg.get("qa_team_roster") or []
+    if not roster:
+        return [m for m in cfg.get("qa_team_members", []) if m and m.strip()]
+
+    if sprint_start is None:
+        # All-time: return every member ever listed
+        return [e["name"] for e in roster if e.get("name")]
+
+    try:
+        s_start = _date.fromisoformat(sprint_start)
+        s_end   = _date.fromisoformat(sprint_end) if sprint_end else s_start
+    except (ValueError, TypeError):
+        return [e["name"] for e in roster if e.get("name")]
+
+    active: list[str] = []
+    for entry in roster:
+        name = entry.get("name", "").strip()
+        if not name:
+            continue
+        try:
+            e_from = _date.fromisoformat(entry["from"])
+        except (KeyError, ValueError, TypeError):
+            e_from = _date(2000, 1, 1)  # treat missing as "from forever"
+        to_val = entry.get("to")
+        e_to = _date.fromisoformat(to_val) if to_val else _date(9999, 12, 31)
+
+        # Overlap: entry active during any part of the sprint
+        if e_from <= s_end and e_to >= s_start:
+            active.append(name)
+
+    # Fall back to flat list if roster produced nothing (e.g. all entries have future from-dates)
+    return active or [m for m in cfg.get("qa_team_members", []) if m and m.strip()]
 
 
 def _load_mapping(mapping_file: str | None) -> list[dict] | None:

@@ -3,15 +3,56 @@ ado:
   project: AMR
   testplans_project: sootballs   # Test Plans live here until migration to AMR is approved
 
-# Full display names exactly as shown in Azure DevOps (Settings → Users).
-# User Stories are filtered by AssignedTo; Bugs are filtered by CreatedBy.
-# Any item tagged with qa_tag is included regardless of assignee.
+# ── QA Team Membership ────────────────────────────────────────────────────────
+#
+# qa_team_roster  (preferred) — date-range based membership.
+#   Each entry has:
+#     name: display name exactly as shown in ADO (Settings → Users)
+#     from: YYYY-MM-DD  first day this person was on the QA team
+#     to:   YYYY-MM-DD  last day (inclusive), or omit / null if still active
+#
+# When a sprint is queried, only members whose from–to range overlaps the
+# sprint's dates are included.  This means historical sprints automatically
+# show the correct team composition without any per-sprint config changes.
+#
+# How to handle roster changes:
+#   - Member joins QA:      add a new entry with from = their start date
+#   - Member leaves QA:     set to = their last day on QA
+#   - Member returns later: add a second entry for the new tenure
+#   - Loaned from another team (temporary): set a specific from/to window
+#
+# qa_team_members (fallback) — simple flat list used when qa_team_roster is
+# absent or empty.  Fine for single-team setups with no historical changes.
+#
+# qa_tag — any ADO work item with this tag is always included regardless of
+# assignee.  Use this for cross-team automation tasks (e.g. a dev does QA
+# automation work for one sprint — just tag their US with sb_qa).
+
+qa_team_roster:
+  - name: "Vasanthi Rajkumar"
+    from: "2024-01-01"
+    to:                          # null = still active
+  # Add all current and past QA members below.
+  # Examples (uncomment and fill in real names + dates):
+  #
+  # - name: "Second QA Member"
+  #   from: "2025-01-01"
+  #   to:
+  #
+  # - name: "Former QA Member"
+  #   from: "2024-03-01"
+  #   to: "2025-08-31"           # left QA team end of Aug 2025
+  #
+  # - name: "Temporary Loan"
+  #   from: "2026-04-01"
+  #   to: "2026-05-31"           # loaned to QA for PI2 only
+
+# Flat fallback — used only if qa_team_roster is empty.
+# Keep in sync with current active members for tools that don't use the roster.
 qa_team_members:
   - "Vasanthi Rajkumar"
-  # Add remaining QA team members below:
-  # - "First Last"
 
-qa_tag: "sb_qa"   # Items with this ADO tag are always included
+qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of assignee
 
 # Absolute path to qa_tooling/ado_test_mapping.yaml in the sootballs_tests repo.
 # Used by /api/automation_coverage to join pytest ↔ ADO TC ↔ AMR WI data.
