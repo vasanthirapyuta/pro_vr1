@@ -36,7 +36,7 @@ qa_team_roster:
   - name: "Vasanthi Rajkumar"
     from: "2024-01-01"
     to:                          # null = still active
-  - name: "Sugashini S"
+  - name: "Sugashini Subramanian"
     from: "2024-01-01"          # TODO: set actual QA join date
     to:
   - name: "Devaharish Murugesan"
@@ -45,7 +45,7 @@ qa_team_roster:
   - name: "Tarani Jothiraj"
     from: "2024-01-01"          # TODO: set actual QA join date
     to:
-  - name: "Sathish S"
+  - name: "Sathish Suryamoorthy"
     from: "2024-01-01"          # TODO: set actual QA join date
     to:
   - name: "Saisurya Akella"
@@ -64,10 +64,10 @@ qa_team_roster:
 # Keep in sync with current active members for tools that don't use the roster.
 qa_team_members:
   - "Vasanthi Rajkumar"
-  - "Sugashini S"
+  - "Sugashini Subramanian"
   - "Devaharish Murugesan"
   - "Tarani Jothiraj"
-  - "Sathish S"
+  - "Sathish Suryamoorthy"
   - "Saisurya Akella"
 
 qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of assignee
