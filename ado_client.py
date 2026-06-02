@@ -43,7 +43,9 @@ def _build_session(pat: str) -> requests.Session:
     retry = Retry(
         total=3,
         backoff_factor=0.5,
-        status_forcelist={429, 500, 502, 503, 504},
+        # Do NOT retry 500 — ADO returns HTML 500 "looping logins" on PAT auth issues
+        # and retrying only worsens the loop. Only retry transient gateway errors.
+        status_forcelist={429, 502, 503, 504},
         allowed_methods={"GET", "POST"},
         raise_on_status=False,
     )
@@ -71,18 +73,21 @@ class ADOClient:
         if cached is not None:
             return cached
 
+        # Route to the correct ADO project based on the iteration path prefix.
+        # sootballs\... paths live in the sootballs project; everything else in AMR.
+        project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
         member_clause = self._member_or_tag_clause(
             field="[System.AssignedTo]", members=norm_members, tag=qa_tag
         )
         query = f"""
             SELECT [System.Id] FROM WorkItems
-            WHERE [System.TeamProject] = '{_esc(self.project)}'
+            WHERE [System.TeamProject] = '{_esc(project)}'
               AND [System.IterationPath] = '{_esc(iteration_path)}'
               AND [System.WorkItemType] = 'User Story'
               {('AND (' + member_clause + ')') if member_clause else ''}
             ORDER BY [System.Id]
         """
-        ids = self._wiql(self.project, query)
+        ids = self._wiql(project, query)
         if not ids:
             result = []
         else:
@@ -93,7 +98,7 @@ class ADOClient:
                 "Microsoft.VSTS.Scheduling.StoryPoints",
                 "Microsoft.VSTS.Common.ClosedDate",
             ]
-            result = [self._normalise(item) for item in self._batch_fetch(self.project, ids, fields)]
+            result = [self._normalise(item) for item in self._batch_fetch(project, ids, fields)]
 
         self._set_cached(cache_key, result)
         return result
@@ -109,17 +114,18 @@ class ADOClient:
         member_clause = self._member_or_tag_clause(
             field="[System.CreatedBy]", members=norm_members, tag=qa_tag
         )
-        # Query UNDER the PI so bugs across all sub-sprints are returned; callers filter to sprint.
+        # Route to correct project; query UNDER the PI for all sub-sprint bugs.
+        project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
         pi_path = "\\".join(iteration_path.split("\\")[:2])
         query = f"""
             SELECT [System.Id] FROM WorkItems
-            WHERE [System.TeamProject] = '{_esc(self.project)}'
+            WHERE [System.TeamProject] = '{_esc(project)}'
               AND [System.IterationPath] UNDER '{_esc(pi_path)}'
               AND [System.WorkItemType] = 'Bug'
               {('AND (' + member_clause + ')') if member_clause else ''}
             ORDER BY [System.Id]
         """
-        ids = self._wiql(self.project, query)
+        ids = self._wiql(project, query)
         if not ids:
             result = []
         else:
@@ -131,7 +137,7 @@ class ADOClient:
                 "Microsoft.VSTS.Common.Priority",
                 "System.Tags",
             ]
-            result = [self._normalise(item) for item in self._batch_fetch(self.project, ids, fields)]
+            result = [self._normalise(item) for item in self._batch_fetch(project, ids, fields)]
 
         self._set_cached(cache_key, result)
         return result
@@ -516,15 +522,16 @@ class ADOClient:
         member_clause = self._member_or_tag_clause(
             field="[System.AssignedTo]", members=norm_members, tag=qa_tag
         )
+        project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
         query = f"""
             SELECT [System.Id] FROM WorkItems
-            WHERE [System.TeamProject] = '{_esc(self.project)}'
+            WHERE [System.TeamProject] = '{_esc(project)}'
               AND [System.IterationPath] = '{_esc(iteration_path)}'
               AND [System.WorkItemType] IN ('Feature', 'User Story')
               {('AND (' + member_clause + ')') if member_clause else ''}
             ORDER BY [System.Id]
         """
-        ids = self._wiql(self.project, query)
+        ids = self._wiql(project, query)
         if not ids:
             self._set_cached(cache_key, [])
             return []
@@ -533,7 +540,7 @@ class ADOClient:
             "System.Id", "System.Title", "System.State", "System.AssignedTo",
             "System.WorkItemType",
         ]
-        items = self._batch_fetch(self.project, ids, fields)
+        items = self._batch_fetch(project, ids, fields)
         features = [self._normalise(item) for item in items]
 
         # For each Feature, find linked TCs via relations
@@ -543,7 +550,7 @@ class ADOClient:
             total_tcs = 0
             automated_tcs = 0
             try:
-                rel_url = f"{_ADO_ROOT}/{self.project}/_apis/wit/workitems/{wi_id}"
+                rel_url = f"{_ADO_ROOT}/{project}/_apis/wit/workitems/{wi_id}"
                 rel_resp = self._session.get(
                     rel_url,
                     params={"api-version": _API_VERSION, "$expand": "relations"},
@@ -654,14 +661,20 @@ class ADOClient:
 
     def _wiql(self, project: str, query: str) -> list[int]:
         url = f"{_ADO_ROOT}/{project}/_apis/wit/wiql"
-        resp = self._session.post(
-            url,
-            json={"query": query},
-            params={"api-version": _API_VERSION},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        ids = [w["id"] for w in resp.json().get("workItems", [])]
+        try:
+            resp = self._session.post(
+                url,
+                json={"query": query},
+                params={"api-version": _API_VERSION},
+                timeout=30,
+            )
+            if not resp.ok:
+                logger.warning("WIQL %s status %s: %s", project, resp.status_code, resp.text[:120])
+                return []
+            ids = [w["id"] for w in resp.json().get("workItems", [])]
+        except Exception as exc:
+            logger.warning("WIQL %s failed (%s) — returning empty", project, exc)
+            return []
         logger.debug("WIQL returned %d ids from %s", len(ids), project)
         return ids
 
