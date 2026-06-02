@@ -755,8 +755,10 @@ def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: s
     try:
         s_start = _date.fromisoformat(sprint_start)
         s_end   = _date.fromisoformat(sprint_end) if sprint_end else s_start
-    except (ValueError, TypeError):
-        return [e["name"] for e in roster if e.get("name")]
+    except (ValueError, TypeError) as exc:
+        logger.warning("resolve_qa_members: invalid sprint date %r/%r — returning all (%s)",
+                       sprint_start, sprint_end, exc)
+        return [e["name"] for e in roster if e.get("name", "").strip()]
 
     active: list[str] = []
     for entry in roster:
@@ -766,7 +768,9 @@ def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: s
         try:
             e_from = _date.fromisoformat(entry["from"])
         except (KeyError, ValueError, TypeError):
-            e_from = _date(2000, 1, 1)  # treat missing as "from forever"
+            logger.warning("resolve_qa_members: roster entry %r missing valid 'from' date — "
+                           "defaulting to 2000-01-01", name)
+            e_from = _date(2000, 1, 1)
         to_val = entry.get("to")
         e_to = _date.fromisoformat(to_val) if to_val else _date(9999, 12, 31)
 

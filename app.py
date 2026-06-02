@@ -402,21 +402,24 @@ def serve_spa(path):
 # ── KPI helpers ───────────────────────────────────────────────────────────────────
 
 def _canon_iter(path: str) -> str:
-    """Normalise iteration path to single backslashes for exact comparison."""
-    return path.replace("\\\\", "\\")
+    """Normalise iteration path: collapse any double-backslash and lowercase."""
+    return path.replace("\\\\", "\\").lower()
 
 
 def _resolve_sprint(label: str | None):
+    sprints = CFG.get("sprints") or []
+    if not sprints:
+        return None
     today = datetime.utcnow().date()
     if not label:
-        for s in CFG["sprints"]:
+        for s in sprints:
             start = datetime.fromisoformat(s["start"]).date()
-            end = datetime.fromisoformat(s["end"]).date()
+            end   = datetime.fromisoformat(s["end"]).date()
             if start <= today <= end:
                 return s
-        past = [s for s in CFG["sprints"] if datetime.fromisoformat(s["end"]).date() < today]
-        return past[-1] if past else CFG["sprints"][0]
-    return next((s for s in CFG["sprints"] if s["label"] == label), None)
+        past = [s for s in sprints if datetime.fromisoformat(s["end"]).date() < today]
+        return past[-1] if past else sprints[0]
+    return next((s for s in sprints if s["label"] == label), None)
 
 
 def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
