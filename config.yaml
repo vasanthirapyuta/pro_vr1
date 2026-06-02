@@ -113,14 +113,14 @@ qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of as
 # Override at runtime via the MAPPING_FILE environment variable.
 # Example (set in a local config override, do not commit user-specific paths):
 #   sootballs_mapping_file: "/home/youruser/path/to/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
-sootballs_mapping_file: null
+sootballs_mapping_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
 
 # Path to feature_coverage_cache.json produced by traverse_feature_coverage.py.
 # Set to null to disable /api/feature_coverage_v2 (endpoint returns empty cache message).
 # Override at runtime via the COVERAGE_CACHE_FILE environment variable.
 # Example:
 #   feature_coverage_cache_file: "/home/youruser/sootballs_tests/qa_tooling/feature_coverage_cache.json"
-feature_coverage_cache_file: null
+feature_coverage_cache_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/feature_coverage_cache.json"
 
 # Legacy iteration path → sprint label mapping for work items created before
 # 2026-02-01 in the sootballs ADO project.
