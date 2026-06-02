@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Azure DevOps REST API client for the QA Metrics Dashboard.
 
