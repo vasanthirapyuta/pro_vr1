@@ -23,7 +23,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from ado_client import ADOClient, resolve_qa_members
+from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_flaky_tests
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,20 @@ _MAPPING_FILE: str | None = (
 _COVERAGE_CACHE_FILE: str | None = (
     os.environ.get("COVERAGE_CACHE_FILE")
     or CFG.get("feature_coverage_cache_file")
+)
+# Path to flaky_tests_report.json produced by scan_flaky_tests.py.
+_FLAKY_REPORT_FILE: str | None = (
+    os.environ.get("FLAKY_REPORT_FILE")
+    or CFG.get("flaky_report_file")
+)
+# GitHub token for nightly health endpoint (reads Actions API, no OAuth needed).
+# Read lazily at request time so it picks up env vars set after process start.
+def _get_github_token() -> str | None:
+    return os.environ.get("GITHUB_TOKEN") or CFG.get("github_token")
+# Path to the full snapshot JSON from build_snapshot.py.
+_SNAPSHOT_FILE: str | None = (
+    os.environ.get("SNAPSHOT_FILE")
+    or CFG.get("snapshot_file")
 )
 
 # State sets derived from live ADO data (2026-05-11)
@@ -382,6 +396,205 @@ def engineer_automation():
     return jsonify({
         "total_tcs_attributed": total_tcs,
         "engineers": data,
+    })
+
+
+# ── Nightly CI Health (GitHub Actions API) ───────────────────────────────────────
+
+@app.get("/api/nightly_health")
+def nightly_health():
+    """Return CI nightly run trends from GitHub Actions API.
+
+    No Allure server OAuth needed — reads GitHub Actions workflow run history.
+    Covers run_nightly_integration.yml and run_nightly_e2e.yml.
+
+    Query params:
+      n_runs  number of recent runs to fetch per workflow (default 30)
+
+    Response per workflow:
+      workflow_file   filename in .github/workflows/
+      trend           pass_rate %, success/failure/cancelled counts
+      runs            list of {run_id, date, conclusion, url, passed, failed, ...}
+    """
+    n_runs = int(request.args.get("n_runs", 30))
+    data = get_nightly_health(_get_github_token(), n_runs=n_runs)
+    return jsonify(data)
+
+
+# ── Flaky Tests ───────────────────────────────────────────────────────────────────
+
+@app.get("/api/flaky_tests")
+def flaky_tests():
+    """Return all tests decorated with @pytest.mark.flaky from sootballs_tests.
+
+    Data comes from flaky_tests_report.json built by:
+      python3 qa_tooling/scan_flaky_tests.py
+
+    Set flaky_report_file in config.yaml or FLAKY_REPORT_FILE env var.
+
+    Response:
+      status          ok | no_report_configured | report_not_found
+      total_flaky     count of @pytest.mark.flaky occurrences
+      by_area         dict {test_area: count}
+      entries         list of {file, line, class, function, reruns, added_date, test_area}
+    """
+    return jsonify(get_flaky_tests(_FLAKY_REPORT_FILE))
+
+
+# ── CI Fix PR Coverage ────────────────────────────────────────────────────────────
+
+@app.get("/api/ci_fix_coverage")
+def ci_fix_coverage():
+    """Return CI fix PR coverage from the snapshot — which fix PRs have AB# ADO links
+    and which are unlinked (invisible to sprint tracking).
+
+    Reads from the snapshot file built by build_snapshot.py.
+    Set snapshot_file in config.yaml or SNAPSHOT_FILE env var.
+
+    Response:
+      total_fix_prs          total fix/* PRs in snapshot
+      linked_count           PRs with AB# ADO links
+      unlinked_count         PRs without any AB# link
+      post_feb_linked        post-2026-02-01 fix PRs with AB# (enforcement era)
+      post_feb_unlinked      post-2026-02-01 fix PRs WITHOUT AB# (enforcement gap)
+      linked_prs             list of linked PRs with {number, title, merged_at, ado_wi_ids}
+      unlinked_prs           list of unlinked PRs (need retroactive AB# or ADO task)
+      wi_ids_to_tag          unique ADO WI IDs that should receive ci_fix tag
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    if not _SNAPSHOT_FILE:
+        return jsonify({"status": "no_snapshot_configured"}), 200
+
+    snap_path = _Path(_SNAPSHOT_FILE)
+    if not snap_path.is_file():
+        return jsonify({"status": "snapshot_not_found", "path": str(snap_path)}), 200
+
+    try:
+        snap = _json.loads(snap_path.read_text())
+    except Exception as exc:
+        return jsonify({"status": f"parse_error: {exc}"}), 200
+
+    prs = snap.get("github", {}).get("prs", [])
+    fix_prs = [p for p in prs if p.get("title", "").lower().startswith("fix")]
+    post_feb = [p for p in fix_prs if (p.get("merged_at") or "") >= "2026-02-01"]
+    pre_feb  = [p for p in fix_prs if (p.get("merged_at") or "") <  "2026-02-01"]
+
+    def _pr_summary(p: dict) -> dict:
+        return {
+            "number":     p["number"],
+            "title":      p["title"],
+            "merged_at":  p.get("merged_at", ""),
+            "ado_wi_ids": p.get("ado_wi_ids", []),
+            "url":        f"https://github.com/rapyuta-robotics/sootballs_tests/pull/{p['number']}",
+        }
+
+    linked   = [p for p in fix_prs if p.get("ado_wi_ids")]
+    unlinked = [p for p in fix_prs if not p.get("ado_wi_ids")]
+    post_linked   = [p for p in post_feb if p.get("ado_wi_ids")]
+    post_unlinked = [p for p in post_feb if not p.get("ado_wi_ids")]
+
+    all_wi_ids = sorted({wi for p in linked for wi in p.get("ado_wi_ids", [])})
+
+    return jsonify({
+        "status":             "ok",
+        "snapshot_date":      snap.get("cutoff_date", ""),
+        "total_fix_prs":      len(fix_prs),
+        "linked_count":       len(linked),
+        "unlinked_count":     len(unlinked),
+        "link_rate_pct":      round(100 * len(linked) / len(fix_prs), 1) if fix_prs else 0,
+        "post_feb_total":     len(post_feb),
+        "post_feb_linked":    len(post_linked),
+        "post_feb_unlinked":  len(post_unlinked),
+        "pre_feb_total":      len(pre_feb),
+        "wi_ids_to_tag":      all_wi_ids,
+        "linked_prs":         [_pr_summary(p) for p in sorted(linked, key=lambda x: -x["number"])],
+        "unlinked_prs":       [_pr_summary(p) for p in sorted(post_unlinked, key=lambda x: -x["number"])],
+    })
+
+
+# ── Test Area Breakdown ────────────────────────────────────────────────────────────
+
+@app.get("/api/test_area_breakdown")
+def test_area_breakdown():
+    """Return breakdown of QA User Stories and Tasks by test area keyword.
+
+    Maps ADO work item titles to test areas using keyword matching:
+      picking, induction, pgs, replenishment, charge, zone, group,
+      agent, tote, navigation, barcode, print, stats, order
+
+    Reads from the snapshot file.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    _AREA_KEYWORDS = {
+        "picking":       ["picking", "pick"],
+        "induction":     ["induction", "induct"],
+        "pgs":           ["pgs", "guiding", "picker guid"],
+        "replenishment": ["replenishment", "replen"],
+        "charge":        ["charge", "charging", "autodock"],
+        "zone_picking":  ["zone picking", "zone_picking"],
+        "group_picking": ["group picking", "group_picking", "improved group"],
+        "navigation":    ["navigation", "waiting spot", "dynamic picking"],
+        "tote":          ["tote", "scan", "barcode"],
+        "order":         ["order", "priority", "csv", "print", "label"],
+        "agent":         ["agent mode", "agent_mode", "fleet", "capacity"],
+        "stats":         ["stats", "lpmh", "analytics"],
+        "ci_infra":      ["ci", "nightly", "workflow", "allure", "runner", "playwright"],
+    }
+
+    if not _SNAPSHOT_FILE:
+        return jsonify({"status": "no_snapshot_configured"}), 200
+
+    snap_path = _Path(_SNAPSHOT_FILE)
+    if not snap_path.is_file():
+        return jsonify({"status": "snapshot_not_found"}), 200
+
+    try:
+        snap = _json.loads(snap_path.read_text())
+    except Exception as exc:
+        return jsonify({"status": f"parse_error: {exc}"}), 200
+
+    us_list   = snap.get("ado", {}).get("user_stories", [])
+    task_list = snap.get("ado", {}).get("tasks", [])
+
+    def _classify(title: str) -> str:
+        title_lower = (title or "").lower()
+        for area, keywords in _AREA_KEYWORDS.items():
+            if any(kw in title_lower for kw in keywords):
+                return area
+        return "other"
+
+    us_by_area:   dict[str, int] = {}
+    task_by_area: dict[str, int] = {}
+
+    for us in us_list:
+        area = _classify(us.get("title", ""))
+        us_by_area[area] = us_by_area.get(area, 0) + 1
+    for t in task_list:
+        area = _classify(t.get("title", ""))
+        task_by_area[area] = task_by_area.get(area, 0) + 1
+
+    all_areas = sorted(set(list(us_by_area) + list(task_by_area)))
+    breakdown = []
+    for area in all_areas:
+        us_cnt   = us_by_area.get(area, 0)
+        task_cnt = task_by_area.get(area, 0)
+        breakdown.append({
+            "area":    area,
+            "stories": us_cnt,
+            "tasks":   task_cnt,
+            "total":   us_cnt + task_cnt,
+        })
+    breakdown.sort(key=lambda x: -x["total"])
+
+    return jsonify({
+        "status":    "ok",
+        "breakdown": breakdown,
+        "total_us":  len(us_list),
+        "total_tasks": len(task_list),
     })
 
 

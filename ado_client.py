@@ -743,6 +743,139 @@ def _esc(value: str) -> str:
     return value.replace("'", "''")
 
 
+# ── GitHub nightly health helper ──────────────────────────────────────────────
+
+
+def get_nightly_health(github_token: str | None, n_runs: int = 30) -> dict:
+    """
+    Fetch nightly CI health data from GitHub Actions API.
+
+    Returns pass/fail trends for the nightly integration and e2e workflows
+    without requiring Allure server OAuth.
+
+    Workflow files targeted:
+      run_nightly_integration.yml  → integration test suite (1,200 tests)
+      run_nightly_e2e.yml          → E2E browser test suite
+
+    For each of the last n_runs:
+      - run_id, date, status (success/failure/cancelled)
+      - test counts if available from the workflow run annotation/artifact
+    """
+    import time as _time
+
+    _GH_API  = "https://api.github.com"
+    _GH_REPO = "rapyuta-robotics/sootballs_tests"
+
+    headers: dict = {"Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+
+    import requests as _req
+    sess = _req.Session()
+    sess.headers.update(headers)
+
+    _WORKFLOWS = {
+        "integration": "run_nightly_integration.yml",
+        "e2e":         "run_nightly_e2e.yml",
+    }
+
+    result: dict = {
+        "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "workflows":    {},
+    }
+
+    for label, wf_file in _WORKFLOWS.items():
+        runs_data: list[dict] = []
+        try:
+            url = f"{_GH_API}/repos/{_GH_REPO}/actions/workflows/{wf_file}/runs"
+            r = sess.get(url, params={"per_page": n_runs, "status": "completed"}, timeout=20)
+            if not r.ok:
+                result["workflows"][label] = {"error": f"GitHub {r.status_code}"}
+                continue
+
+            for run in r.json().get("workflow_runs", []):
+                entry: dict = {
+                    "run_id":     run["id"],
+                    "date":       (run.get("created_at") or "")[:10],
+                    "conclusion": run.get("conclusion", ""),   # success / failure / cancelled
+                    "status":     run.get("status", ""),
+                    "url":        run.get("html_url", ""),
+                    "branch":     run.get("head_branch", ""),
+                    # Test counts populated below if artifact available
+                    "passed":  None,
+                    "failed":  None,
+                    "skipped": None,
+                    "total":   None,
+                }
+                runs_data.append(entry)
+                _time.sleep(0.05)
+
+        except Exception as exc:
+            result["workflows"][label] = {"error": str(exc)}
+            continue
+
+        # Try to enrich the most recent run with test counts from artifacts
+        if runs_data:
+            latest = runs_data[0]
+            try:
+                art_url = f"{_GH_API}/repos/{_GH_REPO}/actions/runs/{latest['run_id']}/artifacts"
+                ar = sess.get(art_url, timeout=15)
+                if ar.ok:
+                    artifacts = ar.json().get("artifacts", [])
+                    allure_art = next(
+                        (a for a in artifacts
+                         if "allure" in (a.get("name") or "").lower()),
+                        None,
+                    )
+                    if allure_art:
+                        latest["allure_artifact_id"] = allure_art["id"]
+                        latest["allure_artifact_size_mb"] = round(
+                            allure_art.get("size_in_bytes", 0) / 1_048_576, 1
+                        )
+            except Exception:
+                pass
+
+        # Build pass/fail trend summary
+        total_runs     = len(runs_data)
+        success_runs   = sum(1 for r in runs_data if r["conclusion"] == "success")
+        failure_runs   = sum(1 for r in runs_data if r["conclusion"] == "failure")
+        cancelled_runs = sum(1 for r in runs_data if r["conclusion"] == "cancelled")
+
+        result["workflows"][label] = {
+            "workflow_file": wf_file,
+            "runs_fetched":  total_runs,
+            "trend": {
+                "success":   success_runs,
+                "failure":   failure_runs,
+                "cancelled": cancelled_runs,
+                "pass_rate": round(100 * success_runs / total_runs, 1) if total_runs else 0,
+            },
+            "runs": runs_data,
+        }
+
+    return result
+
+
+def get_flaky_tests(flaky_report_path: str | None) -> dict:
+    """Read the pre-built flaky_tests_report.json from scan_flaky_tests.py."""
+    import json as _json
+
+    if not flaky_report_path:
+        return {"status": "no_report_configured", "total_flaky": 0, "entries": []}
+
+    from pathlib import Path as _Path
+    p = _Path(flaky_report_path)
+    if not p.is_file():
+        return {"status": "report_not_found", "path": str(p), "total_flaky": 0, "entries": []}
+
+    try:
+        data = _json.loads(p.read_text())
+        return {"status": "ok", **data}
+    except Exception as exc:
+        return {"status": f"parse_error: {exc}", "total_flaky": 0, "entries": []}
+
+
 def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: str | None = None) -> list[str]:
     """Return QA team members active during the given sprint date range.
 
