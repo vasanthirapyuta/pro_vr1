@@ -33,6 +33,9 @@ qa_team_roster:
   # Verify each name in ADO if queries return 0 items for a member.
   #
   # ── Currently active ──────────────────────────────────────────────────────────
+  - name: "Aravind Yanamala"
+    from: "2026-04-20"           # earliest fix PR in sootballs_tests (PR #418)
+    to:
   - name: "Vasanthi Rajkumar"
     from: "2024-01-01"
     to:
@@ -97,6 +100,7 @@ qa_team_roster:
 # Flat fallback — used only if qa_team_roster is empty.
 # Contains currently active members only.
 qa_team_members:
+  - "Aravind Yanamala"
   - "Vasanthi Rajkumar"
   - "Sugashini Subramanian"
   - "Sanjaypkhandan Moovendar"
