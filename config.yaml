@@ -128,7 +128,7 @@ feature_coverage_cache_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/
 
 # Path to qa_snapshot_YYYY_MM_DD.json built by build_snapshot.py.
 # Used by /api/ci_fix_coverage and /api/test_area_breakdown.
-snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_snapshot_2026_06_01.json"
+snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_snapshot_2026_06_03.json"
 
 # Path to flaky_tests_report.json built by scan_flaky_tests.py.
 # Used by /api/flaky_tests.
