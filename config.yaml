@@ -323,3 +323,15 @@ sprints:
     start: "2026-06-08"
     end: "2026-06-19"
     pi: "26PI2"
+
+  - label: "PI3 Sprint IP"
+    iteration_path: "AMR\\26PI3\\PI3 Sprint IP"
+    start: "2026-06-22"
+    end: "2026-07-03"
+    pi: "26PI3"
+
+  - label: "PI3 Sprint 1"
+    iteration_path: "AMR\\26PI3\\PI3 Sprint 1"
+    start: "2026-07-06"
+    end: "2026-07-17"
+    pi: "26PI3"
