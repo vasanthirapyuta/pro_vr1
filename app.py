@@ -13,8 +13,9 @@ and has no dependency on pandas or any heavy library.
 
 import logging
 import os
+import statistics
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -160,7 +161,7 @@ def kpi_summary():
 
     members = _qa_members_for_sprint(sprint)
     user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
-    bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
+    bugs = ado.get_bugs(sprint["iteration_path"])
     return jsonify(_compute(user_stories, bugs, sprint))
 
 
@@ -175,7 +176,7 @@ def kpi_trends():
             continue
         members = _qa_members_for_sprint(sprint)
         user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
-        bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
+        bugs = ado.get_bugs(sprint["iteration_path"])
         results.append(_compute(user_stories, bugs, sprint))
     return jsonify(results)
 
@@ -190,7 +191,6 @@ def engineers():
 
     members = _qa_members_for_sprint(sprint)
     user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
-    bugs = ado.get_bugs(sprint["iteration_path"], members, QA_TAG)
 
     eng: dict[str, dict] = {}
 
@@ -202,23 +202,10 @@ def engineers():
             e["completed"] += 1
         e["points"] += us.get("story_points") or 0
 
-    sprint_iter = _canon_iter(sprint["iteration_path"])
-    sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
-
-    for bug in sprint_bugs:
-        name = bug.get("created_by") or bug.get("assignee") or "Unassigned"
-        e = eng.setdefault(name, _blank_eng(name))
-        e["bugs_reported"] += 1
-        if bug["state"] in BUG_DONE:
-            e["bugs_resolved"] += 1
-
     rows = []
     for e in eng.values():
         e["completion_rate"] = (
             round(e["completed"] / e["stories"] * 100, 1) if e["stories"] else 0
-        )
-        e["bug_resolution_rate"] = (
-            round(e["bugs_resolved"] / e["bugs_reported"] * 100, 1) if e["bugs_reported"] else 0
         )
         rows.append(e)
 
@@ -233,51 +220,154 @@ def bugs_detail():
     if sprint is None:
         return jsonify({"error": "Sprint not found"}), 404
 
-    bugs = ado.get_bugs(sprint["iteration_path"], _qa_members_for_sprint(sprint), QA_TAG)
+    # PI-wide bug pool — trend/lead-time/aging need more than one 2-week sprint
+    # of data to mean anything, so these analytics run over the whole PI.
+    bugs = ado.get_bugs(sprint["iteration_path"])
 
     sprint_iter = _canon_iter(sprint["iteration_path"])
     sprint_bugs = [b for b in bugs if _canon_iter(b["iteration"]) == sprint_iter] or bugs
+    mttr = _median_lead_time(sprint_bugs, "resolved")
 
-    closed = [
-        b for b in sprint_bugs
-        if b["state"] in BUG_DONE and b.get("closed") and b.get("created")
-    ]
-    mttr = None
-    if closed:
-        days = [
-            (datetime.fromisoformat(b["closed"]) - datetime.fromisoformat(b["created"])).days
-            for b in closed
-        ]
-        mttr = round(sum(days) / len(days), 1)
+    pi_sprints = [s for s in CFG["sprints"] if s.get("pi") == sprint.get("pi")]
+    window_start = min((s["start"] for s in pi_sprints), default=sprint["start"])
+    window_end = min(datetime.utcnow().date().isoformat(), max((s["end"] for s in pi_sprints), default=sprint["end"]))
 
     return jsonify({
         "sprint": sprint["label"],
+        "pi": sprint.get("pi", ""),
         "total": len(sprint_bugs),
         "resolved": sum(1 for b in sprint_bugs if b["state"] in BUG_DONE),
         "state_distribution": dict(Counter(b["state"] for b in sprint_bugs).most_common()),
         "priority_distribution": dict(
             Counter(str(b.get("priority") or "—") for b in sprint_bugs).most_common()
         ),
-        "by_reporter": dict(
-            Counter(
-                b.get("created_by") or b.get("assignee") or "Unknown"
-                for b in sprint_bugs
-            ).most_common()
-        ),
         "mttr_days": mttr,
+        "pi_total": len(bugs),
+        "weekly_trend": _weekly_bug_trend(bugs, window_start, window_end),
+        "age_buckets": _age_buckets(bugs),
+        "lead_time": {
+            "time_to_resolve": _lead_time_stats(bugs, "created", "resolved"),
+            "time_to_verify": _lead_time_stats(bugs, "resolved", "closed"),
+        },
+        "by_area": _bugs_by_area(bugs),
+        "oldest_open": _oldest_open_bugs(bugs, limit=10),
         "items": [
             {
                 "id": b["id"],
                 "title": b["title"][:80],
                 "state": b["state"],
                 "priority": b.get("priority"),
-                "reporter": b.get("created_by") or b.get("assignee"),
+                "area": (b.get("area") or "").split("\\")[-1] or None,
                 "created": b.get("created"),
-                "closed": b.get("closed"),
+                "resolved": b.get("resolved") or None,
+                "closed": b.get("closed") or None,
             }
             for b in sorted(sprint_bugs, key=lambda x: x.get("created") or "", reverse=True)[:60]
         ],
     })
+
+
+def _median_lead_time(bugs: list[dict], resolved_field: str) -> float | None:
+    """Median days from created to resolved_field (falls back to closed)."""
+    days = []
+    for b in bugs:
+        end = b.get(resolved_field) or b.get("closed")
+        if b.get("created") and end:
+            days.append((datetime.fromisoformat(end) - datetime.fromisoformat(b["created"])).days)
+    return round(statistics.median(days), 1) if days else None
+
+
+def _percentile(values: list[float], pct: float) -> float | None:
+    if not values:
+        return None
+    s = sorted(values)
+    k = (len(s) - 1) * (pct / 100)
+    f, c = int(k), min(int(k) + 1, len(s) - 1)
+    return round(s[f] if f == c else s[f] + (s[c] - s[f]) * (k - f), 1)
+
+
+def _lead_time_stats(bugs: list[dict], start_field: str, end_field: str) -> dict:
+    """Days between two lifecycle timestamps (e.g. created→resolved, resolved→closed)."""
+    days = [
+        (datetime.fromisoformat(b[end_field]) - datetime.fromisoformat(b[start_field])).days
+        for b in bugs if b.get(start_field) and b.get(end_field)
+    ]
+    return {
+        "median": round(statistics.median(days), 1) if days else None,
+        "p90": _percentile(days, 90),
+        "count": len(days),
+    }
+
+
+def _week_of(date_str: str) -> str:
+    d = datetime.fromisoformat(date_str).date()
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def _weekly_bug_trend(bugs: list[dict], window_start: str, window_end: str) -> list[dict]:
+    """Bugs created vs. resolved per Monday-aligned week across the PI's date span."""
+    created_by_week: dict[str, int] = defaultdict(int)
+    resolved_by_week: dict[str, int] = defaultdict(int)
+    for b in bugs:
+        if b.get("created") and window_start <= b["created"] <= window_end:
+            created_by_week[_week_of(b["created"])] += 1
+        resolved_at = b.get("resolved") or b.get("closed")
+        if resolved_at and window_start <= resolved_at <= window_end:
+            resolved_by_week[_week_of(resolved_at)] += 1
+
+    week = datetime.fromisoformat(window_start).date()
+    week -= timedelta(days=week.weekday())
+    end = datetime.fromisoformat(window_end).date()
+    trend = []
+    net = 0
+    while week <= end:
+        wk = week.isoformat()
+        created = created_by_week.get(wk, 0)
+        resolved = resolved_by_week.get(wk, 0)
+        net += created - resolved
+        trend.append({"week": wk, "created": created, "resolved": resolved, "net_flow": created - resolved, "cumulative_net_flow": net})
+        week += timedelta(days=7)
+    return trend
+
+
+def _age_buckets(bugs: list[dict]) -> dict:
+    today = datetime.utcnow().date()
+    buckets = {"0-7d": 0, "8-14d": 0, "15-30d": 0, "31d+": 0}
+    for b in bugs:
+        if b["state"] in BUG_DONE or not b.get("created"):
+            continue
+        age = (today - datetime.fromisoformat(b["created"]).date()).days
+        key = "0-7d" if age <= 7 else "8-14d" if age <= 14 else "15-30d" if age <= 30 else "31d+"
+        buckets[key] += 1
+    return buckets
+
+
+def _bugs_by_area(bugs: list[dict]) -> list[dict]:
+    areas: dict[str, dict] = {}
+    for b in bugs:
+        area = (b.get("area") or "").split("\\")[-1] or "Unclassified"
+        a = areas.setdefault(area, {"area": area, "total": 0, "open": 0})
+        a["total"] += 1
+        if b["state"] not in BUG_DONE:
+            a["open"] += 1
+    return sorted(areas.values(), key=lambda x: -x["total"])
+
+
+def _oldest_open_bugs(bugs: list[dict], limit: int = 10) -> list[dict]:
+    today = datetime.utcnow().date()
+    open_bugs = [b for b in bugs if b["state"] not in BUG_DONE and b.get("created")]
+    open_bugs.sort(key=lambda b: b["created"])
+    return [
+        {
+            "id": b["id"],
+            "title": b["title"][:80],
+            "state": b["state"],
+            "area": (b.get("area") or "").split("\\")[-1] or None,
+            "created": b["created"],
+            "age_days": (today - datetime.fromisoformat(b["created"]).date()).days,
+        }
+        for b in open_bugs[:limit]
+    ]
 
 
 # ── Test Plans (Tier 2 — sootballs project) ──────────────────────────────────────
@@ -693,17 +783,20 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
     bug_res_rate = round(resolved_bugs / total_bugs * 100, 1) if total_bugs else 0
     defect_density = round(total_bugs / total_us, 2) if total_us else 0
 
-    closed_bugs = [
+    # Lead time = created → resolved (falls back to closed if no ResolvedDate).
+    # Median, not mean: a handful of multi-hundred-day legacy bugs otherwise
+    # dominate the average and hide the real distribution.
+    resolved_with_dates = [
         b for b in sprint_bugs
-        if b["state"] in BUG_DONE and b.get("closed") and b.get("created")
+        if b.get("created") and (b.get("resolved") or b.get("closed"))
     ]
     mttr = None
-    if closed_bugs:
+    if resolved_with_dates:
         days = [
-            (datetime.fromisoformat(b["closed"]) - datetime.fromisoformat(b["created"])).days
-            for b in closed_bugs
+            (datetime.fromisoformat(b.get("resolved") or b["closed"]) - datetime.fromisoformat(b["created"])).days
+            for b in resolved_with_dates
         ]
-        mttr = round(sum(days) / len(days), 1)
+        mttr = round(statistics.median(days), 1)
 
     bug_state_dist = dict(Counter(b["state"] for b in sprint_bugs).most_common())
     health = _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate)
@@ -751,10 +844,7 @@ def _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate
 
 
 def _blank_eng(name: str) -> dict:
-    return {
-        "name": name, "stories": 0, "completed": 0, "points": 0.0,
-        "bugs_reported": 0, "bugs_resolved": 0,
-    }
+    return {"name": name, "stories": 0, "completed": 0, "points": 0.0}
 
 
 if __name__ == "__main__":

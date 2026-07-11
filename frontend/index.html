@@ -582,17 +582,48 @@ function BugsPage({ sprintLabel }) {
     }],
   };
 
-  const byReporter = Object.entries(bugs.by_reporter || {}).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  const reporterOption = {
+  const trend = bugs.weekly_trend || [];
+  const trendOption = {
     tooltip: { trigger: 'axis' },
-    grid: { left: 130, right: 24, top: 12, bottom: 24 },
-    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
-    yAxis: { type: 'category', data: byReporter.map(([n]) => n.split(' ')[0]), axisLabel: { fontSize: 11 } },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 44, right: 44, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: trend.map(t => t.week), axisLabel: { fontSize: 10 } },
+    yAxis: [
+      { type: 'value', name: 'bugs / week', minInterval: 1, axisLabel: { fontSize: 10 } },
+      { type: 'value', name: 'cumulative net flow', axisLabel: { fontSize: 10 }, splitLine: { show: false } },
+    ],
+    series: [
+      { name: 'Created', type: 'bar', barMaxWidth: 22, itemStyle: { color: '#f43f5e' }, data: trend.map(t => t.created) },
+      { name: 'Resolved', type: 'bar', barMaxWidth: 22, itemStyle: { color: '#10b981' }, data: trend.map(t => t.resolved) },
+      { name: 'Cumulative net flow', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 6, itemStyle: { color: '#6366f1' }, lineStyle: { color: '#6366f1' }, data: trend.map(t => t.cumulative_net_flow) },
+    ],
+  };
+
+  const ageOrder = ['0-7d', '8-14d', '15-30d', '31d+'];
+  const ageColors = { '0-7d': '#10b981', '8-14d': '#f59e0b', '15-30d': '#fb923c', '31d+': '#f43f5e' };
+  const ageBuckets = bugs.age_buckets || {};
+  const ageOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 40, right: 16, top: 16, bottom: 30 },
+    xAxis: { type: 'category', data: ageOrder, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', minInterval: 1 },
     series: [{
-      type: 'bar', barMaxWidth: 24, itemStyle: { color: '#6366f1' },
-      data: byReporter.map(([, v]) => v),
-      label: { show: true, position: 'right', fontSize: 10 },
+      type: 'bar', barMaxWidth: 48, label: { show: true, position: 'top', fontSize: 11 },
+      data: ageOrder.map(k => ({ value: ageBuckets[k] || 0, itemStyle: { color: ageColors[k] } })),
     }],
+  };
+
+  const byArea = bugs.by_area || [];
+  const areaOption = {
+    tooltip: { trigger: 'axis' },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 130, right: 40, top: 12, bottom: 44 },
+    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: byArea.map(a => a.area), axisLabel: { fontSize: 11 } },
+    series: [
+      { name: 'Open', type: 'bar', stack: 'a', barMaxWidth: 20, itemStyle: { color: '#f43f5e' }, data: byArea.map(a => a.open) },
+      { name: 'Resolved', type: 'bar', stack: 'a', barMaxWidth: 20, itemStyle: { color: '#10b981' }, data: byArea.map(a => a.total - a.open) },
+    ],
   };
 
   const bugStateStyle = (state) => {
@@ -604,39 +635,78 @@ function BugsPage({ sprintLabel }) {
     };
   };
 
+  const ttr = bugs.lead_time?.time_to_resolve || {};
+  const ttv = bugs.lead_time?.time_to_verify || {};
+  const openBacklog = ageOrder.reduce((sum, k) => sum + (ageBuckets[k] || 0), 0);
+
   return (
     <div className="page">
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>
-        <KPICard label="Total Bugs" value={bugs.total} />
-        <KPICard label="Resolved" value={bugs.resolved} sub={bugs.total ? `${Math.round(bugs.resolved / bugs.total * 100)}%` : '0%'} />
-        <KPICard label="MTTR" value={bugs.mttr_days} unit=" days" lowerBetter sub="mean time to resolve" />
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))' }}>
+        <KPICard label="Total Bugs (sprint)" value={bugs.total} />
+        <KPICard label="Resolved (sprint)" value={bugs.resolved} sub={bugs.total ? `${Math.round(bugs.resolved / bugs.total * 100)}%` : '0%'} />
+        <KPICard label="Open Backlog (PI)" value={openBacklog} lowerBetter sub={`of ${bugs.pi_total} in ${bugs.pi}`} />
+        <KPICard label="Time to Resolve" value={ttr.median} unit=" d" lowerBetter sub={ttr.count ? `median · P90 ${ttr.p90}d · n=${ttr.count}` : 'no data'} />
+        <KPICard label="Time to Verify" value={ttv.median} unit=" d" lowerBetter sub={ttv.count ? `resolved→closed · P90 ${ttv.p90}d` : 'no data'} />
         <KPICard label="Test Exec Hours" tier={3} />
-        <KPICard label="Auto Coverage %" tier={3} />
+      </div>
+
+      <div className="chart-row chart-row-2">
+        <div className="chart-card" style={{ gridColumn: '1 / -1' }}>
+          <div className="chart-card-title">Bugs Created vs. Resolved — Weekly ({bugs.pi})</div>
+          <EChart option={trendOption} height={260} />
+        </div>
       </div>
 
       <div className="chart-row chart-row-2">
         <div className="chart-card">
-          <div className="chart-card-title">Bug State Distribution</div>
+          <div className="chart-card-title">Bug State Distribution (sprint)</div>
           <EChart option={stateOption} height={240} />
         </div>
         <div className="chart-card">
-          <div className="chart-card-title">Bugs Reported by QA Member</div>
-          {byReporter.length > 0
-            ? <EChart option={reporterOption} height={240} />
-            : <div style={{ color: 'var(--muted)', fontSize: 13, padding: '60px 0', textAlign: 'center' }}>
-                No reporter data — check QA member config
-              </div>
-          }
+          <div className="chart-card-title">Open Bug Age (PI, currently open)</div>
+          <EChart option={ageOption} height={240} />
         </div>
       </div>
 
-      {bugs.items && bugs.items.length > 0 && (
+      {byArea.length > 0 && (
         <div className="chart-card">
-          <div className="chart-card-title">Recent Bugs</div>
+          <div className="chart-card-title">Bugs by Area (PI)</div>
+          <EChart option={areaOption} height={Math.max(160, byArea.length * 36)} />
+        </div>
+      )}
+
+      {bugs.oldest_open && bugs.oldest_open.length > 0 && (
+        <div className="chart-card">
+          <div className="chart-card-title">Oldest Open Bugs (aging spotlight)</div>
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>#</th><th>Title</th><th>State</th><th>Priority</th><th>Reporter</th><th>Created</th><th>Closed</th></tr>
+                <tr><th>#</th><th>Title</th><th>State</th><th>Area</th><th>Created</th><th>Age (days)</th></tr>
+              </thead>
+              <tbody>
+                {bugs.oldest_open.map(b => (
+                  <tr key={b.id}>
+                    <td className="td-muted">{b.id}</td>
+                    <td style={{ maxWidth: 300 }}>{b.title}</td>
+                    <td><span style={bugStateStyle(b.state)}>{b.state}</span></td>
+                    <td className="td-muted">{b.area || '—'}</td>
+                    <td className="td-muted">{b.created}</td>
+                    <td className={b.age_days > 30 ? 'red' : b.age_days > 14 ? 'amber' : ''}>{b.age_days}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {bugs.items && bugs.items.length > 0 && (
+        <div className="chart-card">
+          <div className="chart-card-title">Recent Bugs (sprint)</div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Title</th><th>State</th><th>Priority</th><th>Area</th><th>Created</th><th>Resolved</th><th>Closed</th></tr>
               </thead>
               <tbody>
                 {bugs.items.slice(0, 30).map(b => (
@@ -645,8 +715,9 @@ function BugsPage({ sprintLabel }) {
                     <td style={{ maxWidth: 300 }}>{b.title}</td>
                     <td><span style={bugStateStyle(b.state)}>{b.state}</span></td>
                     <td className="td-muted">{b.priority || '—'}</td>
-                    <td>{b.reporter || '—'}</td>
+                    <td className="td-muted">{b.area || '—'}</td>
                     <td className="td-muted">{b.created || '—'}</td>
+                    <td className="td-muted">{b.resolved || '—'}</td>
                     <td className="td-muted">{b.closed || '—'}</td>
                   </tr>
                 ))}
@@ -692,38 +763,20 @@ function EngineerPage({ sprintLabel }) {
     ],
   };
 
-  const bugBarOption = {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 110, right: 24, top: 12, bottom: 24 },
-    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
-    yAxis: { type: 'category', data: engs.map(e => e.name.split(' ')[0]), axisLabel: { fontSize: 11 } },
-    series: [{
-      type: 'bar', barMaxWidth: 20, itemStyle: { color: '#f43f5e' },
-      data: engs.map(e => e.bugs_reported),
-      label: { show: true, position: 'right', fontSize: 10 },
-    }],
-  };
-
   const chartHeight = Math.max(220, engs.length * 38);
 
   return (
     <div className="page">
-      <div className="chart-row chart-row-2">
-        <div className="chart-card">
-          <div className="chart-card-title">Story Completion by Engineer</div>
-          <EChart option={engBarOption} height={chartHeight} />
-        </div>
-        <div className="chart-card">
-          <div className="chart-card-title">Bugs Reported by Engineer</div>
-          <EChart option={bugBarOption} height={chartHeight} />
-        </div>
+      <div className="chart-card">
+        <div className="chart-card-title">Story Completion by Engineer</div>
+        <EChart option={engBarOption} height={chartHeight} />
       </div>
       <div className="chart-card">
         <div className="chart-card-title">Per-Engineer Summary</div>
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Engineer</th><th>Stories</th><th>Completed</th><th>Completion %</th><th>Story Points</th><th>Bugs Reported</th><th>Bugs Resolved</th></tr>
+              <tr><th>Engineer</th><th>Stories</th><th>Completed</th><th>Completion %</th><th>Story Points</th></tr>
             </thead>
             <tbody>
               {engs.map(e => (
@@ -733,8 +786,6 @@ function EngineerPage({ sprintLabel }) {
                   <td>{e.completed}</td>
                   <td className={colorClass(e.completion_rate)}>{e.completion_rate}%</td>
                   <td className="td-muted">{e.points > 0 ? e.points : '—'}</td>
-                  <td>{e.bugs_reported || '—'}</td>
-                  <td>{e.bugs_resolved > 0 ? e.bugs_resolved : '—'}</td>
                 </tr>
               ))}
             </tbody>

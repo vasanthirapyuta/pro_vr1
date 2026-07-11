@@ -5,11 +5,17 @@ Azure DevOps REST API client for the QA Metrics Dashboard.
 
 Filtering strategy (confirmed from live ADO data, 2026-05-11):
   - User Stories  → filter by AssignedTo (QA member is doing the testing work)
-  - Bugs          → filter by CreatedBy  (QA member is the one who found/filed it)
+  - Bugs          → NOT filtered by reporter/assignee (2026-07-10): bug health metrics
+                    (created-vs-resolved flow, lead time, aging) care about all bugs in
+                    the PI, not just ones QA happened to file
   - Both          → OR-condition: item tagged `sb_qa` is always included regardless of assignee
   - Story points  → absent on ~75 % of items in this project; count-based metrics are primary
   - TargetDate    → universally unset; sprint end date used as implicit deadline
   - CompletedWork → universally unset; test execution hours deferred to Tier 3
+  - Severity/Priority → set on <2% of recent Bugs (verified 2026-07-10); not usable for
+                    weighted metrics until the team adopts the field (see TIER3_CHANGES.md)
+  - Tags on Bugs  → 0 of 1020 recent Bugs have any tag; no escape/regression convention
+                    exists yet — do not derive that signal from tags
 
 Test Plans live in the `sootballs` project.  The same PAT works cross-project.
 Suite-level testCaseCount returns 0 via the suites API; test cases are queried
@@ -103,17 +109,15 @@ class ADOClient:
         self._set_cached(cache_key, result)
         return result
 
-    def get_bugs(self, iteration_path: str, qa_members: list[str], qa_tag: str) -> list[dict]:
-        """Return Bugs in the PI created by a QA member or tagged qa_tag."""
-        norm_members = sorted({m.strip() for m in qa_members if m and m.strip()})
-        cache_key = self._make_key("bugs", iteration_path, tuple(norm_members), qa_tag)
+    def get_bugs(self, iteration_path: str) -> list[dict]:
+        """Return ALL Bugs in the PI containing this iteration, regardless of who
+        filed or is assigned to them — bug health is a team-wide signal, not a
+        per-reporter one."""
+        cache_key = self._make_key("bugs", iteration_path)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
-        member_clause = self._member_or_tag_clause(
-            field="[System.CreatedBy]", members=norm_members, tag=qa_tag
-        )
         # Route to correct project; query UNDER the PI for all sub-sprint bugs.
         project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
         pi_path = "\\".join(iteration_path.split("\\")[:2])
@@ -122,7 +126,6 @@ class ADOClient:
             WHERE [System.TeamProject] = '{_esc(project)}'
               AND [System.IterationPath] UNDER '{_esc(pi_path)}'
               AND [System.WorkItemType] = 'Bug'
-              {('AND (' + member_clause + ')') if member_clause else ''}
             ORDER BY [System.Id]
         """
         ids = self._wiql(project, query)
@@ -133,8 +136,10 @@ class ADOClient:
                 "System.Id", "System.Title", "System.State",
                 "System.WorkItemType", "System.AssignedTo", "System.CreatedBy",
                 "System.CreatedDate", "System.IterationPath",
+                "Microsoft.VSTS.Common.ResolvedDate",
                 "Microsoft.VSTS.Common.ClosedDate",
                 "Microsoft.VSTS.Common.Priority",
+                "System.AreaPath",
                 "System.Tags",
             ]
             result = [self._normalise(item) for item in self._batch_fetch(project, ids, fields)]
@@ -730,10 +735,12 @@ class ADOClient:
                 else str(created_by or "")
             ),
             "created": (f.get("System.CreatedDate") or "")[:10],
+            "resolved": (f.get("Microsoft.VSTS.Common.ResolvedDate") or "")[:10],
             "closed": (f.get("Microsoft.VSTS.Common.ClosedDate") or "")[:10],
             "story_points": f.get("Microsoft.VSTS.Scheduling.StoryPoints"),
             "tags": f.get("System.Tags", "") or "",
             "iteration": f.get("System.IterationPath", ""),
+            "area": f.get("System.AreaPath", "") or "",
             "priority": f.get("Microsoft.VSTS.Common.Priority"),
         }
 
