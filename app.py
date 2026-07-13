@@ -514,6 +514,88 @@ def ci_fix_coverage():
     })
 
 
+# ── sb_qa PR Coverage ─────────────────────────────────────────────────────────────
+
+@app.get("/api/sb_qa_coverage")
+def sb_qa_coverage():
+    """Return sb_qa-labeled PR coverage from the snapshot — new QA test automation /
+    feature-coverage PRs (GitHub label `sb_qa`, applied via label_prs.yml based on
+    feat:/test: title prefix), which ones link to an ADO work item, and which ones
+    are missing from ado_test_mapping.yaml's github_pr field (i.e. the automation
+    they added isn't yet reflected in the Automation tab's coverage numbers).
+
+    Reads from the snapshot file built by build_snapshot.py (needs a snapshot built
+    after label backfill — labels weren't captured before 2026-07-11).
+    Set snapshot_file in config.yaml or SNAPSHOT_FILE env var.
+
+    Response:
+      total_sb_qa_prs           total sb_qa-labeled PRs in snapshot
+      linked_count              PRs with an AB# ADO link
+      unlinked_count            PRs without any AB# link
+      in_mapping_count          PRs whose number appears in ado_test_mapping.yaml github_pr
+      missing_from_mapping      PRs not found in the mapping file (candidates to backfill)
+      sb_qa_prs                 full list, newest first
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    if not _SNAPSHOT_FILE:
+        return jsonify({"status": "no_snapshot_configured"}), 200
+
+    snap_path = _Path(_SNAPSHOT_FILE)
+    if not snap_path.is_file():
+        return jsonify({"status": "snapshot_not_found", "path": str(snap_path)}), 200
+
+    try:
+        snap = _json.loads(snap_path.read_text())
+    except Exception as exc:
+        return jsonify({"status": f"parse_error: {exc}"}), 200
+
+    prs = snap.get("github", {}).get("prs", [])
+    sb_qa_prs = [p for p in prs if "sb_qa" in (p.get("labels") or [])]
+
+    def _pr_summary(p: dict) -> dict:
+        return {
+            "number":     p["number"],
+            "title":      p["title"],
+            "merged_at":  p.get("merged_at", ""),
+            "ado_wi_ids": p.get("ado_wi_ids", []),
+            "url":        f"https://github.com/rapyuta-robotics/sootballs_tests/pull/{p['number']}",
+        }
+
+    linked   = [p for p in sb_qa_prs if p.get("ado_wi_ids")]
+    unlinked = [p for p in sb_qa_prs if not p.get("ado_wi_ids")]
+
+    pr_numbers_in_mapping: set = set()
+    if _MAPPING_FILE:
+        mapping_path = _Path(_MAPPING_FILE)
+        if mapping_path.is_file():
+            try:
+                mapping_raw = yaml.safe_load(mapping_path.read_text()) or {}
+                for m in mapping_raw.get("mappings", []) or []:
+                    if m.get("github_pr"):
+                        pr_numbers_in_mapping.add(m["github_pr"])
+            except yaml.YAMLError:
+                logger.warning("Could not parse mapping file %s for sb_qa_coverage", mapping_path)
+
+    in_mapping     = [p for p in sb_qa_prs if p["number"] in pr_numbers_in_mapping]
+    missing        = [p for p in sb_qa_prs if p["number"] not in pr_numbers_in_mapping]
+
+    return jsonify({
+        "status":                "ok",
+        "snapshot_date":         snap.get("cutoff_date", ""),
+        "total_sb_qa_prs":       len(sb_qa_prs),
+        "linked_count":          len(linked),
+        "unlinked_count":        len(unlinked),
+        "link_rate_pct":         round(100 * len(linked) / len(sb_qa_prs), 1) if sb_qa_prs else 0,
+        "in_mapping_count":      len(in_mapping),
+        "missing_from_mapping_count": len(missing),
+        "mapping_coverage_pct":  round(100 * len(in_mapping) / len(sb_qa_prs), 1) if sb_qa_prs else 0,
+        "sb_qa_prs":             [_pr_summary(p) for p in sorted(sb_qa_prs, key=lambda x: -x["number"])],
+        "missing_from_mapping":  [_pr_summary(p) for p in sorted(missing, key=lambda x: -x["number"])],
+    })
+
+
 # ── Test Area Breakdown ────────────────────────────────────────────────────────────
 
 @app.get("/api/test_area_breakdown")

@@ -987,6 +987,7 @@ function FeatureCoveragePage({ sprintLabel }) {
 
 function AutomationPage() {
   const { data, loading, error } = useFetch('/api/automation_coverage');
+  const { data: sbQa, loading: sbQaLoading } = useFetch('/api/sb_qa_coverage');
 
   if (loading) return <Spinner />;
   if (error)   return <ErrorNotice message={error} />;
@@ -1194,6 +1195,57 @@ function AutomationPage() {
           </div>
         </div>
       )}
+
+      <div className="section-title" style={{ marginTop:4 }}>sb_qa PR Coverage (GitHub)</div>
+      {sbQaLoading ? <Spinner /> : sbQa && sbQa.status === 'ok' ? (
+        <>
+          <div className="kpi-grid">
+            <KPICard label="sb_qa PRs" value={sbQa.total_sb_qa_prs}
+              sub="new test automation / feature coverage PRs (GitHub label)" />
+            <KPICard label="Linked to ADO" value={sbQa.link_rate_pct} unit="%"
+              sub={`${sbQa.linked_count} of ${sbQa.total_sb_qa_prs} have an AB# link`} />
+            <KPICard label="In Mapping File" value={sbQa.mapping_coverage_pct} unit="%" lowerBetter
+              sub={`${sbQa.in_mapping_count} of ${sbQa.total_sb_qa_prs} tracked in ado_test_mapping.yaml`} />
+          </div>
+          {sbQa.missing_from_mapping.length > 0 && (
+            <div className="chart-card" style={{ marginBottom:24 }}>
+              <div className="chart-card-title">
+                sb_qa PRs Missing from Mapping File
+                <span className="badge badge-tier2">{sbQa.missing_from_mapping.length} to backfill</span>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>PR #</th><th>Title</th><th>Merged</th><th>ADO WI</th></tr>
+                  </thead>
+                  <tbody>
+                    {sbQa.missing_from_mapping.slice(0, 30).map(p => (
+                      <tr key={p.number}>
+                        <td>
+                          <a href={p.url} target="_blank" rel="noreferrer"
+                             style={{ color:'var(--indigo)', textDecoration:'none', fontWeight:600 }}>
+                            #{p.number}
+                          </a>
+                        </td>
+                        <td style={{ maxWidth:340 }}>{p.title}</td>
+                        <td className="td-muted">{p.merged_at || '—'}</td>
+                        <td className="td-muted">
+                          {p.ado_wi_ids.length > 0 ? p.ado_wi_ids.join(', ') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : sbQa && sbQa.status !== 'ok' ? (
+        <div className="notice notice-slate">
+          <span className="notice-icon">ℹ</span>
+          <div>sb_qa PR coverage unavailable: <code>{sbQa.status}</code>. Needs a snapshot built from <code>build_snapshot.py</code> on or after 2026-07-11 (labels weren't captured before that).</div>
+        </div>
+      ) : null}
 
       <div className="notice notice-slate" style={{ marginTop:16 }}>
         <span className="notice-icon">ℹ</span>
