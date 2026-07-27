@@ -127,8 +127,10 @@ sootballs_mapping_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_to
 feature_coverage_cache_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/feature_coverage_cache.json"
 
 # Path to qa_snapshot_YYYY_MM_DD.json built by build_snapshot.py.
-# Used by /api/ci_fix_coverage and /api/test_area_breakdown.
-snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_snapshot_2026_06_03.json"
+# Used by /api/ci_fix_coverage, /api/test_area_breakdown, and /api/sb_qa_coverage.
+# Snapshots before 2026-07-11 don't have PR "labels" captured — sb_qa_coverage
+# needs this one or later.
+snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_snapshot_2026_07_11.json"
 
 # Path to flaky_tests_report.json built by scan_flaky_tests.py.
 # Used by /api/flaky_tests.
