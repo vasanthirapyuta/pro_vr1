@@ -306,7 +306,7 @@ class ADOClient:
         amr_wis = self.get_amr_automation_wis()
 
         # 5. Group confirmed mappings by plan
-        plan_map: dict[int, dict] = {}
+        plan_map: dict[int | None, dict] = {}
         for m in confirmed:
             pid = m["plan_id"]
             if pid not in plan_map:
@@ -331,13 +331,16 @@ class ADOClient:
         by_plan = [
             {
                 "plan_id": pid,
-                "plan_name": plan_names.get(pid, f"Plan {pid}"),
+                "plan_name": "Unmapped (no Test Plan linked)" if pid is None else plan_names.get(pid, f"Plan {pid}"),
                 "confirmed_tcs": p["confirmed_tcs"],
                 "automated_in_ado": p["automated_in_ado"],
                 "pending_link": p["confirmed_tcs"] - p["automated_in_ado"],
                 "amr_wi_ids": p["amr_wi_ids"],
             }
-            for pid, p in sorted(plan_map.items())
+            # Some confirmed mappings have plan_id: null (tc_id/pytest_method/amr_wi_id
+            # filled in but never linked to a Test Plan) — sort them last instead of
+            # crashing on None-vs-int comparison.
+            for pid, p in sorted(plan_map.items(), key=lambda kv: (kv[0] is None, kv[0] or 0))
         ]
 
         # 7. Enrich AMR WIs with linked TC info
