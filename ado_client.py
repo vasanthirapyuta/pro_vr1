@@ -992,7 +992,8 @@ def _load_mapping(mapping_file: str | None) -> list[dict] | None:
 
 def _is_mapping_placeholder(entry: dict) -> bool:
     """Mirror of link_ado_tests._is_placeholder — must stay in sync."""
-    if entry.get("tc_id", 0) >= 57000:
+    tc_id = entry.get("tc_id")
+    if tc_id is not None and tc_id >= 57000:
         return True
     if entry.get("plan_id", 0) == 99999:
         return True
