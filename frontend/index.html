@@ -846,12 +846,13 @@ function TestPlansPage() {
 
       {tc.total > 0 && (
         <>
-          <div className="section-title">Test Case Overview (sootballs project)</div>
+          <div className="section-title">Test Case Overview ({tc.area_path || 'sootballs\\qa'})</div>
           <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', marginBottom: 24 }}>
-            <KPICard label="Total Test Cases" value={tc.total} sub="across all plans" />
-            <KPICard label="Automated" value={tc.automated} sub={`${tc.automation_rate}% of total`} />
-            <KPICard label="Not Automated" value={tc.not_automated} lowerBetter />
-            <KPICard label="Automation Rate" value={tc.automation_rate} unit="%" />
+            <KPICard label="Total Test Cases" value={tc.total} sub="raw TC count, incl. parametrized variants" />
+            <KPICard label="Distinct Scenarios" value={tc.distinct_scenarios} sub="parametrized variants de-duplicated" />
+            <KPICard label="Automated" value={tc.automated} sub={`${tc.automation_rate}% of total TCs`} />
+            <KPICard label="Automation Rate (raw TCs)" value={tc.automation_rate} unit="%" />
+            <KPICard label="Automation Rate (distinct scenarios)" value={tc.distinct_scenario_automation_rate} unit="%" sub={`${tc.distinct_scenarios_automated} of ${tc.distinct_scenarios} scenarios have ≥1 automated variant`} />
           </div>
           <div className="chart-row chart-row-2" style={{ marginBottom: 24 }}>
             <div className="chart-card">
@@ -1100,11 +1101,13 @@ function AutomationPage() {
 
   return (
     <div className="page">
-      <div className="section-title">Automation Coverage — ADO sootballs Test Cases</div>
+      <div className="section-title">Automation Coverage — sootballs\qa Test Cases</div>
 
       <div className="kpi-grid">
-        <KPICard label="Automation Rate" value={s.pct_automated_in_ado} unit="%"
-          sub={`${s.automated_in_ado} of ${s.total_tcs_in_ado} TCs in ADO`} />
+        <KPICard label="Automation Rate (raw TCs)" value={s.pct_automated_in_ado} unit="%"
+          sub={`${s.automated_in_ado} of ${s.total_tcs_in_ado} TCs in ADO (sootballs\\qa)`} />
+        <KPICard label="Automation Rate (distinct scenarios)" value={s.distinct_scenario_automation_rate} unit="%"
+          sub={`${s.distinct_scenarios_automated} of ${s.distinct_scenarios} scenarios, parametrized variants de-duplicated`} />
         <KPICard label="Automated TCs" value={s.automated_in_ado}
           sub="AutomationStatus = Automated" />
         <KPICard label="Confirmed in Mapping" value={s.confirmed_in_mapping}
