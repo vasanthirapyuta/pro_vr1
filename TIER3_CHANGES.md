@@ -26,7 +26,7 @@ Estimation Slip Rate = stories closed after TargetDate / total stories × 100 %
 ```
 
 ### Dashboard KPI unlocked
-- **Estimation Slip Rate** (currently showing "Awaiting Approval" on Overview page)
+- **Estimation Slip Rate** (the "Awaiting Approval" placeholder for this metric was removed from the Overview page pending this change; it will be re-added there once `TargetDate` is populated and the KPI is live)
 
 ---
 

@@ -370,7 +370,6 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
         <KPICard label="Unplanned Work" value={kpi.unplanned_rate} unit="%" trend={delta(kpi, prevKpi, 'unplanned_rate')} lowerBetter sub={`${kpi.unplanned_count} stories added mid-sprint`} />
         <KPICard label="Carry-Over Rate" value={kpi.carry_over_rate} unit="%" trend={delta(kpi, prevKpi, 'carry_over_rate')} lowerBetter sub={`${kpi.carry_over_count} stories from prior sprint`} />
         <KPICard label="Defect Density" value={kpi.defect_density} trend={delta(kpi, prevKpi, 'defect_density')} lowerBetter sub="bugs per user story" />
-        <KPICard label="Estimation Slip %" tier={3} />
         <KPICard label="CI Stability %" tier={3} />
       </div>
 
