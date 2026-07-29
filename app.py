@@ -24,7 +24,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_flaky_tests
+from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_ci_stability, get_flaky_tests
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -508,6 +508,28 @@ def nightly_health():
     """
     n_runs = int(request.args.get("n_runs", 30))
     data = get_nightly_health(_get_github_token(), n_runs=n_runs)
+    return jsonify(data)
+
+
+@app.get("/api/ci_stability")
+def ci_stability():
+    """Return CI Stability % for the nightly integration and e2e suites,
+    computed from each run's Allure summary.json — the same artifact
+    send_slack_report.yml reads to build the Slack nightly notification.
+
+    Falls back to the most recent prior run with a usable summary if
+    today's run hasn't produced one yet (crashed early, or hasn't run) —
+    flagged per-workflow via "is_stale" + "date".
+
+    Response:
+      workflows.integration / workflows.e2e
+        status        "ok" | "no_summary_found" | "no_completed_runs" | "error: ..."
+        date          date of the run this data actually came from
+        is_stale      true if that date isn't the most recent completed run
+        passed/failed/broken/skipped/missing/considered/pass_pct
+      combined_pass_pct   passed / considered, weighted across both suites
+    """
+    data = get_ci_stability(_get_github_token())
     return jsonify(data)
 
 
