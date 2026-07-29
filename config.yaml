@@ -337,3 +337,9 @@ sprints:
     start: "2026-07-06"
     end: "2026-07-17"
     pi: "26PI3"
+
+  - label: "PI3 Sprint 2"
+    iteration_path: "AMR\\26PI3\\PI3 Sprint 2"
+    start: "2026-07-20"
+    end: "2026-07-31"
+    pi: "26PI3"
