@@ -30,27 +30,52 @@ Estimation Slip Rate = stories closed after TargetDate / total stories × 100 %
 
 ---
 
-## Change 2 — Establish a `ci` Tag Convention for CI/CD Work Items
+## Change 2 — CI Stability % — DONE (superseded the `ci` Tag Convention below)
 
-**ADO Project:** AMR  
-**Applies to:** User Stories and Tasks  
+**Status: implemented 2026-07-29, live on the Overview page.** No ADO change was needed after all —
+see "What we built instead" below. The original `ci`-tag proposal is kept underneath for context
+but is no longer planned.
+
+### What we built instead
+CI Stability % is computed directly from GitHub Actions, not from ADO work items. For each of the
+nightly `run_nightly_integration.yml` and `run_nightly_e2e.yml` workflows, the dashboard reads the
+`allure-summary-*` artifact (`widgets/summary.json`) from the most recent completed run — the same
+artifact `.github/workflows/send_slack_report.yml` already reads to build the Slack nightly
+notification, so this number always matches what's posted in Slack by construction. If the most
+recent run has no usable summary (crashed before producing one), it falls back to the next most
+recent run and flags the result as stale with the actual date used.
+
+```
+CI Stability % = passed / (passed + failed + broken + missing) × 100
+```
+
+Skipped tests are excluded from the denominator (not a stability signal); "missing" (crashed/
+cancelled/timed-out, already crash-padded in the summary's "unknown" bucket) counts against
+stability, since a crashed run isn't a neutral outcome. Integration and e2e are shown individually
+alongside a combined, test-count-weighted headline number.
+
+This is a materially better metric than the original proposal below: it measures actual test-pass
+health per run, not how diligently the team tags ADO work items.
+
+### Dashboard KPI unlocked
+- **CI Stability %** — live on the Overview page (`/api/ci_stability`, `ado_client.py:get_ci_stability`)
+
+---
+
+### (Superseded) Original proposal — Establish a `ci` Tag Convention for CI/CD Work Items
+
+**ADO Project:** AMR
+**Applies to:** User Stories and Tasks
 **Tag value:** `ci` (lowercase, consistent with existing `sb_qa` convention)
 
-### What needs to happen
-Team agreement (no ADO admin change needed) to tag all CI/CD-related User Stories and Tasks with `ci`.
-This is purely a process/culture change — ask the team lead to add it to the definition-of-done for
-CI-related stories.
-
-### Why
-The AMR project mixes CI/CD maintenance work alongside feature work.  Without a tag filter the dashboard
-cannot isolate CI test-pass rates.  With the tag filter in place:
+This would have required tagging all CI/CD-related User Stories and Tasks with `ci` and computing:
 
 ```
 CI Stability % = CI-tagged stories closed in Completed/Resolved state / total CI-tagged stories × 100 %
 ```
 
-### Dashboard KPI unlocked
-- **CI Stability %** (currently showing "Awaiting Approval" on Overview page)
+Not pursued — the GitHub Actions-based approach above needed no ADO process change and measures the
+actual thing this KPI is meant to represent.
 
 ---
 
@@ -112,12 +137,13 @@ the User Story completion data.
 
 ## Summary Table
 
-| # | Change | Effort | ADO Admin Needed? | KPI Unlocked |
-|---|--------|--------|-------------------|--------------|
-| 1 | Make `TargetDate` required on User Stories | Low (field rule change) | Yes | Estimation Slip Rate |
-| 2 | Adopt `ci` tag convention for CI work items | Low (process agreement) | No | CI Stability % |
-| 3 | Log `CompletedWork` hours on QA Tasks | Low (habit change) | No | Test Execution Hours |
-| 4 | Migrate Test Plans sootballs → AMR + link iterations | Medium (data migration) | Yes | Sprint test metrics |
+| # | Change | Effort | ADO Admin Needed? | KPI Unlocked | Status |
+|---|--------|--------|-------------------|--------------|--------|
+| 1 | Make `TargetDate` required on User Stories | Low (field rule change) | Yes | Estimation Slip Rate | Pending |
+| 2 | ~~Adopt `ci` tag convention~~ — built via GitHub Actions instead | — | No | CI Stability % | **Done** (2026-07-29) |
+| 3 | Log `CompletedWork` hours on QA Tasks | Low (habit change) | No | Test Execution Hours | Pending |
+| 4 | Migrate Test Plans sootballs → AMR + link iterations | Medium (data migration) | Yes | Sprint test metrics | Pending |
 
-Changes 1–3 can be approved and implemented within a single sprint.  Change 4 is a larger project and
-should be scoped as a dedicated initiative with its own iteration path and acceptance criteria.
+Changes 1 and 3 can be approved and implemented within a single sprint. Change 4 is a larger project
+and should be scoped as a dedicated initiative with its own iteration path and acceptance criteria.
+Change 2 is done — see its section above for what shipped instead of the original proposal.

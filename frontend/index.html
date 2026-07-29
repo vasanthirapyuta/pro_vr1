@@ -317,11 +317,19 @@ function HealthGauge({ score }) {
 
 // ── Overview Page ─────────────────────────────────────────────────────────────
 
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function formatIsoDateShort(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${MONTH_ABBR[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+}
+
 function OverviewPage({ sprintLabel, onCacheRefreshed }) {
   const { data: kpi, loading, error, refresh } = useFetch(
     sprintLabel ? `/api/kpi/summary?sprint=${encodeURIComponent(sprintLabel)}` : null
   );
   const { data: trends } = useFetch('/api/kpi/trends');
+  const { data: ciStability } = useFetch('/api/ci_stability');
 
   // Expose refresh handle so parent can trigger after cache clear
   useEffect(() => {
@@ -360,6 +368,15 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
     },
   }));
 
+  const ciSuiteLabel = (w) => {
+    if (!w || w.status !== 'ok') return '—';
+    const dateNote = w.is_stale ? ` (${formatIsoDateShort(w.date)})` : '';
+    return `${w.pass_pct}%${dateNote}`;
+  };
+  const ciSub = ciStability
+    ? `Integration ${ciSuiteLabel(ciStability.workflows?.integration)} · E2E ${ciSuiteLabel(ciStability.workflows?.e2e)}`
+    : 'Nightly integration + e2e, latest run';
+
   return (
     <div className="page">
       <div className="section-title">Sprint Health Indicators</div>
@@ -370,7 +387,7 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
         <KPICard label="Unplanned Work" value={kpi.unplanned_rate} unit="%" trend={delta(kpi, prevKpi, 'unplanned_rate')} lowerBetter sub={`${kpi.unplanned_count} stories added mid-sprint`} />
         <KPICard label="Carry-Over Rate" value={kpi.carry_over_rate} unit="%" trend={delta(kpi, prevKpi, 'carry_over_rate')} lowerBetter sub={`${kpi.carry_over_count} stories from prior sprint`} />
         <KPICard label="Defect Density" value={kpi.defect_density} trend={delta(kpi, prevKpi, 'defect_density')} lowerBetter sub="bugs per user story" />
-        <KPICard label="CI Stability %" tier={3} />
+        <KPICard label="CI Stability %" value={ciStability?.combined_pass_pct ?? null} unit="%" sub={ciSub} />
       </div>
 
       <div className="chart-row chart-row-2">
@@ -851,7 +868,6 @@ function TestPlansPage() {
                 {[
                   ['Sprint-level Automation Linking', 'Link test plans to sprint iterations in AMR project'],
                   ['Estimation Slip Rate (exact)',     'Requires TargetDate to be set on all User Stories'],
-                  ['CI Test Stability %',             'Requires ci tag on tasks OR Build:Read PAT scope'],
                   ['Test Execution Hours',            'Requires team to log CompletedWork on QA Tasks'],
                 ].map(([title, desc]) => (
                   <div key={title} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>

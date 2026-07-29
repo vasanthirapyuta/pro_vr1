@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Azure DevOps REST API client for the QA Metrics Dashboard.
 
@@ -22,12 +20,18 @@ Suite-level testCaseCount returns 0 via the suites API; test cases are queried
 via WIQL on WorkItemType='Test Case' instead.
 """
 
+from __future__ import annotations
+
 import hashlib
+import io
+import json
 import logging
 import threading
 import time
+import urllib.error
+import urllib.request
+import zipfile
 from datetime import date as _date
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -864,6 +868,234 @@ def get_nightly_health(github_token: str | None, n_runs: int = 30) -> dict:
             "runs": runs_data,
         }
 
+    return result
+
+
+class _ArtifactNoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib handler that captures a redirect URL instead of following it —
+    GitHub's artifact-zip endpoint 302/303s to a time-limited Azure Blob SAS
+    URL that must be fetched WITHOUT the GitHub Authorization header."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _get_artifact_cdn_url(repo: str, artifact_id: int, token: str | None) -> str | None:
+    api_url = f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip"
+    opener = urllib.request.build_opener(_ArtifactNoRedirect)
+    req_headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        req_headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(api_url, headers=req_headers)
+    try:
+        with opener.open(req):
+            return None  # 200 means no redirect — unexpected
+    except urllib.error.HTTPError as exc:
+        if exc.code in (302, 303):
+            return exc.headers.get("Location")
+        return None
+    except urllib.error.URLError:
+        return None
+
+
+def _list_allure_summary_artifacts(sess: requests.Session, repo: str, run_id: int) -> list[dict]:
+    """Return non-expired allure-summary-* artifacts for one run, paginating
+    through the full artifact list. A single nightly run can carry 150-250+
+    artifacts (per-shard results, per-shard logs, videos) once the summary
+    file is just one entry among them — a single per_page=100 page is NOT
+    enough (confirmed against live runs: 181 artifacts on a recent e2e run,
+    253 on a recent integration run), so relying on page 1 alone risks
+    silently missing the summary and falling back to a stale day for no
+    real reason."""
+    matches: list[dict] = []
+    page = 1
+    while page <= 5:  # 500-artifact backstop against runaway pagination
+        try:
+            resp = sess.get(
+                f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts",
+                params={"per_page": 100, "page": page},
+                timeout=15,
+            )
+            if not resp.ok:
+                break
+            batch = resp.json().get("artifacts", [])
+        except Exception:
+            break
+        if not batch:
+            break
+        matches.extend(
+            a for a in batch
+            if not a.get("expired") and (a.get("name") or "").startswith("allure-summary")
+        )
+        if len(batch) < 100:
+            break
+        page += 1
+    return matches
+
+
+def _download_allure_summary(repo: str, artifact_id: int, token: str | None) -> dict | None:
+    """Download one allure-summary-* artifact ZIP and return its parsed
+    widgets/summary.json, or None if unavailable/unparseable."""
+    cdn_url = _get_artifact_cdn_url(repo, artifact_id, token)
+    if not cdn_url:
+        return None
+    try:
+        # No Authorization header on the CDN request — the SAS token in the
+        # URL rejects requests carrying an extra auth header.
+        with urllib.request.urlopen(urllib.request.Request(cdn_url), timeout=60) as resp:
+            zip_bytes = resp.read()
+    except (urllib.error.URLError, OSError):
+        return None
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            name = next((n for n in zf.namelist() if n.endswith("summary.json")), None)
+            if not name:
+                return None
+            return json.loads(zf.read(name))
+    except Exception:
+        # Covers BadZipFile, JSONDecodeError, and corrupt-entry errors
+        # (e.g. zlib.error) that zipfile can raise on a truncated download —
+        # any of these just means "this artifact isn't usable," not a crash.
+        return None
+
+
+_CI_STABILITY_CACHE_TTL = 1800  # 30 min — nightly data only changes once a day; this just
+                                # avoids repeating a multi-request GitHub walk + artifact
+                                # download on every Overview page load.
+_ci_stability_cache: dict[str, tuple[float, dict]] = {}
+_ci_stability_lock = threading.Lock()
+
+
+def _get_ci_stability_cached() -> dict | None:
+    with _ci_stability_lock:
+        entry = _ci_stability_cache.get("data")
+    if entry is None:
+        return None
+    ts, data = entry
+    return data if time.monotonic() - ts < _CI_STABILITY_CACHE_TTL else None
+
+
+def _set_ci_stability_cache(data: dict) -> None:
+    with _ci_stability_lock:
+        _ci_stability_cache["data"] = (time.monotonic(), data)
+
+
+def get_ci_stability(github_token: str | None, max_lookback: int = 10) -> dict:
+    """Return CI Stability % for the nightly integration and e2e suites,
+    computed from each run's Allure summary.json (the same artifact
+    send_slack_report.yml reads to build the Slack nightly notification —
+    using it here means this number always matches what's already posted
+    in Slack, by construction).
+
+    For each workflow, walks backward from the most recent completed run
+    until it finds one with a usable, correctly-type-stamped
+    allure-summary-* artifact (mirrors the has_summary / SUMMARY_TYPE
+    validation in .github/workflows/send_slack_report.yml). If the most
+    recent run has no usable summary (crashed before producing one, or
+    hasn't run yet today), falls back to the next most recent and marks
+    the result as stale with the actual date used.
+
+    Stability % = passed / (passed + failed + broken + missing) * 100.
+    Skipped tests are excluded from the denominator (not a stability
+    signal); missing tests (the summary's "unknown" bucket — crashed/
+    cancelled/timed-out, already crash-padded upstream) count against
+    stability, since a crashed run is not a neutral outcome.
+
+    Cached for _CI_STABILITY_CACHE_TTL: this run walks completed-run
+    history and downloads an artifact ZIP per workflow, so a cache-free
+    version would repeat that full round-trip on every Overview page load
+    even though nightly data only actually changes once a day.
+    """
+    cached = _get_ci_stability_cached()
+    if cached is not None:
+        return cached
+
+    _GH_REPO = "rapyuta-robotics/sootballs_tests"
+    _WORKFLOWS = {
+        "integration": ("run_nightly_integration.yml", "Integration"),
+        "e2e":         ("run_nightly_e2e.yml", "E2E"),
+    }
+
+    headers: dict = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    sess = requests.Session()
+    sess.headers.update(headers)
+
+    def _suite_stats(stat: dict) -> dict:
+        passed  = stat.get("passed", 0) or 0
+        failed  = stat.get("failed", 0) or 0
+        broken  = stat.get("broken", 0) or 0
+        skipped = stat.get("skipped", 0) or 0
+        missing = stat.get("unknown", 0) or 0
+        considered = passed + failed + broken + missing
+        return {
+            "passed": passed, "failed": failed, "broken": broken,
+            "skipped": skipped, "missing": missing, "considered": considered,
+            "pass_pct": round(passed / considered * 100, 1) if considered else None,
+        }
+
+    result: dict = {"generated_at": __import__("datetime").datetime.utcnow().isoformat(), "workflows": {}}
+
+    for label, (wf_file, type_stamp) in _WORKFLOWS.items():
+        try:
+            runs_resp = sess.get(
+                f"https://api.github.com/repos/{_GH_REPO}/actions/workflows/{wf_file}/runs",
+                params={"per_page": max_lookback, "status": "completed"},
+                timeout=20,
+            )
+            runs = runs_resp.json().get("workflow_runs", []) if runs_resp.ok else []
+        except Exception as exc:
+            result["workflows"][label] = {"status": f"error: {exc}"}
+            continue
+
+        if not runs:
+            result["workflows"][label] = {"status": "no_completed_runs"}
+            continue
+
+        newest_date = (runs[0].get("created_at") or "")[:10]
+        found = None
+        found_date = None
+        for run in runs:
+            candidates = _list_allure_summary_artifacts(sess, _GH_REPO, run["id"])
+            for a in candidates:
+                try:
+                    summary = _download_allure_summary(_GH_REPO, a["id"], github_token)
+                except Exception:
+                    # A single flaky download shouldn't sink the whole endpoint —
+                    # treat it the same as "no usable summary" and keep looking.
+                    summary = None
+                if not summary:
+                    continue
+                stamp = summary.get("nightly_test_type") or ""
+                if stamp and stamp != type_stamp:
+                    continue  # scoped to the other suite (e.g. a shared combined-run summary)
+                found = summary
+                found_date = (run.get("created_at") or "")[:10]
+                break
+            if found:
+                break
+
+        if not found:
+            result["workflows"][label] = {"status": "no_summary_found", "checked_runs": len(runs)}
+            continue
+
+        stats = _suite_stats(found.get("statistic", {}))
+        result["workflows"][label] = {
+            "status": "ok",
+            "date": found_date,
+            "is_stale": found_date != newest_date,
+            **stats,
+        }
+
+    ok_suites = [w for w in result["workflows"].values() if w.get("status") == "ok"]
+    total_passed = sum(w["passed"] for w in ok_suites)
+    total_considered = sum(w["considered"] for w in ok_suites)
+    result["combined_pass_pct"] = (
+        round(total_passed / total_considered * 100, 1) if total_considered else None
+    )
+    _set_ci_stability_cache(result)
     return result
 
 
