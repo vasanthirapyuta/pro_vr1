@@ -880,23 +880,60 @@ class _ArtifactNoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _get_artifact_cdn_url(repo: str, artifact_id: int, token: str) -> str | None:
+def _get_artifact_cdn_url(repo: str, artifact_id: int, token: str | None) -> str | None:
     api_url = f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip"
     opener = urllib.request.build_opener(_ArtifactNoRedirect)
-    req = urllib.request.Request(
-        api_url,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-    )
+    req_headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        req_headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(api_url, headers=req_headers)
     try:
-        opener.open(req)
-        return None  # 200 means no redirect — unexpected
+        with opener.open(req):
+            return None  # 200 means no redirect — unexpected
     except urllib.error.HTTPError as exc:
         if exc.code in (302, 303):
             return exc.headers.get("Location")
         return None
+    except urllib.error.URLError:
+        return None
 
 
-def _download_allure_summary(repo: str, artifact_id: int, token: str) -> dict | None:
+def _list_allure_summary_artifacts(sess: requests.Session, repo: str, run_id: int) -> list[dict]:
+    """Return non-expired allure-summary-* artifacts for one run, paginating
+    through the full artifact list. A single nightly run can carry 150-250+
+    artifacts (per-shard results, per-shard logs, videos) once the summary
+    file is just one entry among them — a single per_page=100 page is NOT
+    enough (confirmed against live runs: 181 artifacts on a recent e2e run,
+    253 on a recent integration run), so relying on page 1 alone risks
+    silently missing the summary and falling back to a stale day for no
+    real reason."""
+    matches: list[dict] = []
+    page = 1
+    while page <= 5:  # 500-artifact backstop against runaway pagination
+        try:
+            resp = sess.get(
+                f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts",
+                params={"per_page": 100, "page": page},
+                timeout=15,
+            )
+            if not resp.ok:
+                break
+            batch = resp.json().get("artifacts", [])
+        except Exception:
+            break
+        if not batch:
+            break
+        matches.extend(
+            a for a in batch
+            if not a.get("expired") and (a.get("name") or "").startswith("allure-summary")
+        )
+        if len(batch) < 100:
+            break
+        page += 1
+    return matches
+
+
+def _download_allure_summary(repo: str, artifact_id: int, token: str | None) -> dict | None:
     """Download one allure-summary-* artifact ZIP and return its parsed
     widgets/summary.json, or None if unavailable/unparseable."""
     cdn_url = _get_artifact_cdn_url(repo, artifact_id, token)
@@ -907,7 +944,7 @@ def _download_allure_summary(repo: str, artifact_id: int, token: str) -> dict | 
         # URL rejects requests carrying an extra auth header.
         with urllib.request.urlopen(urllib.request.Request(cdn_url), timeout=60) as resp:
             zip_bytes = resp.read()
-    except urllib.error.URLError:
+    except (urllib.error.URLError, OSError):
         return None
 
     try:
@@ -916,7 +953,10 @@ def _download_allure_summary(repo: str, artifact_id: int, token: str) -> dict | 
             if not name:
                 return None
             return json.loads(zf.read(name))
-    except (zipfile.BadZipFile, json.JSONDecodeError):
+    except Exception:
+        # Covers BadZipFile, JSONDecodeError, and corrupt-entry errors
+        # (e.g. zlib.error) that zipfile can raise on a truncated download —
+        # any of these just means "this artifact isn't usable," not a crash.
         return None
 
 
@@ -1018,21 +1058,14 @@ def get_ci_stability(github_token: str | None, max_lookback: int = 10) -> dict:
         found = None
         found_date = None
         for run in runs:
-            try:
-                art_resp = sess.get(
-                    f"https://api.github.com/repos/{_GH_REPO}/actions/runs/{run['id']}/artifacts",
-                    params={"per_page": 100}, timeout=15,
-                )
-                if not art_resp.ok:
-                    continue
-                artifacts = art_resp.json().get("artifacts", [])
-            except Exception:
-                continue
-
-            for a in artifacts:
-                if a.get("expired") or not (a.get("name") or "").startswith("allure-summary"):
-                    continue
-                summary = _download_allure_summary(_GH_REPO, a["id"], github_token or "")
+            candidates = _list_allure_summary_artifacts(sess, _GH_REPO, run["id"])
+            for a in candidates:
+                try:
+                    summary = _download_allure_summary(_GH_REPO, a["id"], github_token)
+                except Exception:
+                    # A single flaky download shouldn't sink the whole endpoint —
+                    # treat it the same as "no usable summary" and keep looking.
+                    summary = None
                 if not summary:
                     continue
                 stamp = summary.get("nightly_test_type") or ""
