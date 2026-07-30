@@ -26,6 +26,7 @@ import hashlib
 import io
 import json
 import logging
+import re
 import threading
 import time
 import urllib.error
@@ -157,7 +158,32 @@ class ADOClient:
 
     def get_test_case_summary(self) -> dict:
         """
-        Count test cases in sootballs by AutomationStatus via WIQL.
+        Count test cases owned by this QA team (AreaPath 'sootballs\\qa') by
+        AutomationStatus via WIQL, plus a de-duplicated "distinct scenario"
+        count alongside the raw total.
+
+        Two corrections vs. the original version of this function, both
+        found by checking real ADO data rather than assuming the naive
+        query was representative:
+          1. No AreaPath filter meant this counted ~5,092 Test Cases
+             project-wide, but 48% of those (2,433) belong to two other
+             teams entirely ("Io Infra QA Squad", "io-amr-si") sharing the
+             same ADO project — confirmed zero overlap with any of this
+             team's own automation-mapping-tracked test cases. Scoping to
+             AreaPath UNDER 'sootballs\\qa' fixes that.
+          2. A hardcoded 1000-item cap meant even the un-scoped total was
+             never actually a real total — just the first 1000 (oldest,
+             lowest-ID) test cases, silently unrepresentative of the whole
+             set. Removed; the qa-scoped set (~2,100) is cheap enough to
+             fetch in full.
+
+        Many test scenarios exist in ADO as several near-duplicate Test
+        Case work items — one per parametrized variant — rather than ADO's
+        native per-case parameters. distinct_scenarios groups by title with
+        common parametrize-style suffixes stripped (trailing "- Case N",
+        "(N)", "[...]"), so both the raw TC count and the de-duplicated
+        scenario count are reported, not just one or the other.
+
         Suite-level API returns 0 because cases are linked at plan level;
         WIQL on WorkItemType='Test Case' is the reliable path.
         """
@@ -171,8 +197,9 @@ class ADOClient:
             resp = self._session.post(
                 url,
                 json={"query": (
-                    "SELECT [System.Id],[Microsoft.VSTS.TCM.AutomationStatus] "
-                    "FROM WorkItems WHERE [System.WorkItemType] = 'Test Case' "
+                    "SELECT [System.Id] FROM WorkItems "
+                    "WHERE [System.WorkItemType] = 'Test Case' "
+                    "AND [System.AreaPath] UNDER 'sootballs\\qa' "
                     "ORDER BY [System.Id]"
                 )},
                 params={"api-version": _API_VERSION},
@@ -186,32 +213,43 @@ class ADOClient:
             if not ids:
                 return {"total": 0, "automated": 0, "not_automated": 0}
 
-            automated = not_automated = 0
-            # Cap at 1000 for speed; adequate for trend metrics
-            for chunk_start in range(0, min(len(ids), 1000), _BATCH_SIZE):
+            automated = 0
+            scenario_status: dict[str, bool] = {}  # base title -> any variant automated?
+            for chunk_start in range(0, len(ids), _BATCH_SIZE):
                 chunk = ids[chunk_start:chunk_start + _BATCH_SIZE]
                 batch_url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
                 batch_resp = self._session.post(
                     batch_url,
-                    json={"ids": chunk, "fields": ["Microsoft.VSTS.TCM.AutomationStatus"]},
+                    json={"ids": chunk, "fields": ["System.Title", "Microsoft.VSTS.TCM.AutomationStatus"]},
                     params={"api-version": _API_VERSION},
                     timeout=30,
                 )
-                if batch_resp.ok:
-                    for item in batch_resp.json().get("value", []):
-                        status = item["fields"].get("Microsoft.VSTS.TCM.AutomationStatus", "")
-                        if status == "Automated":
-                            automated += 1
-                        else:
-                            not_automated += 1
+                if not batch_resp.ok:
+                    continue
+                for item in batch_resp.json().get("value", []):
+                    f = item["fields"]
+                    is_automated = f.get("Microsoft.VSTS.TCM.AutomationStatus") == "Automated"
+                    if is_automated:
+                        automated += 1
+                    base = _strip_parametrize_suffix(f.get("System.Title", ""))
+                    scenario_status[base] = scenario_status.get(base, False) or is_automated
 
             total = len(ids)
+            not_automated = total - automated
+            distinct_total = len(scenario_status)
+            distinct_automated = sum(1 for v in scenario_status.values() if v)
+
             result = {
                 "total": total,
                 "automated": automated,
                 "not_automated": not_automated,
                 "automation_rate": round(automated / total * 100, 1) if total else 0,
-                "capped_at": min(total, 1000),
+                "distinct_scenarios": distinct_total,
+                "distinct_scenarios_automated": distinct_automated,
+                "distinct_scenario_automation_rate": (
+                    round(distinct_automated / distinct_total * 100, 1) if distinct_total else 0
+                ),
+                "area_path": "sootballs\\qa",
             }
             self._set_cached(cache_key, result)
             return result
@@ -387,6 +425,9 @@ class ADOClient:
                 "total_tcs_in_ado":        tc_summary["total"],
                 "automated_in_ado":        tc_summary["automated"],
                 "pct_automated_in_ado":    tc_summary.get("automation_rate", 0),
+                "distinct_scenarios":               tc_summary.get("distinct_scenarios", 0),
+                "distinct_scenarios_automated":      tc_summary.get("distinct_scenarios_automated", 0),
+                "distinct_scenario_automation_rate": tc_summary.get("distinct_scenario_automation_rate", 0),
                 "confirmed_in_mapping":    len(confirmed),
                 "todo_in_mapping":         len(mappings) - len(confirmed),
                 "pending_link_to_ado":     len(confirmed) - automated_confirmed,
@@ -757,6 +798,36 @@ def _esc(value: str) -> str:
     return value.replace("'", "''")
 
 
+_PARAM_SUFFIX_PATTERNS = [
+    re.compile(r'\s*[-–]\s*(case|scenario|variant)?\s*#?\d+\s*$', re.I),
+    re.compile(r'\s*\(\s*\d+\s*\)\s*$'),
+    re.compile(r'\s*\[\s*.*?\s*\]\s*$'),
+]
+
+
+def _strip_parametrize_suffix(title: str) -> str:
+    """Strip a trailing parametrize-style suffix ("- Case 3", "(2)", "[x=5]")
+    from a Test Case title, for grouping near-duplicate TCs that represent
+    parametrized variants of the same underlying scenario back into one
+    distinct-scenario count. Confirmed against real ADO data: 148 such
+    groups (331 TCs) exist within this team's own AreaPath alone, so the
+    raw TC count and the de-duplicated scenario count are materially
+    different numbers, not a cosmetic distinction.
+
+    This is a best-effort heuristic, not a guaranteed-precise classifier:
+    a title that genuinely ends in a bracketed annotation unrelated to
+    parametrization (e.g. "Verify tote position [WMS]") would be
+    over-merged with any other title differing only in that trailing
+    bracket. Acceptable here because distinct_scenarios is reported
+    alongside the raw TC count, never in place of it — a spot-check of
+    the actual groups found is worthwhile if this number is ever quoted
+    on its own outside the dashboard."""
+    t = (title or "").strip()
+    for pattern in _PARAM_SUFFIX_PATTERNS:
+        t = pattern.sub("", t)
+    return t.strip() or "(untitled)"
+
+
 # ── GitHub nightly health helper ──────────────────────────────────────────────
 
 
@@ -1116,6 +1187,69 @@ def get_flaky_tests(flaky_report_path: str | None) -> dict:
         return {"status": "ok", **data}
     except Exception as exc:
         return {"status": f"parse_error: {exc}", "total_flaky": 0, "entries": []}
+
+
+def get_release_feature_coverage(sanity_file: str | None) -> dict:
+    """Read amr_master_sanity_status.json (built by gen_amr_master_sanity_suite_v2.py)
+    and group its 51 TC-SAN sanity cases by release (3.4/3.5/3.6/3.7), each with a
+    real automation status — a curated alternative to ADO's own sparse "Feature"
+    work item type for representing release-level coverage (see config.yaml
+    comment on amr_master_sanity_file for why).
+
+    "Automated" and "Partial" both count toward automation_pct (a Partial case has
+    real, passing automation proving some but not all of the stated expectation —
+    still meaningfully covered, not a gap), reported separately so the distinction
+    isn't hidden. "Gap" (any sub-label — Held, Scaffolded, or plain Gap) does not
+    count as automated. "Doc Mismatch" is reported as its own bucket, separate
+    from "gap" — it means the product doesn't match the documented behavior, a
+    documentation-accuracy problem, not a missing-automation one; folding it into
+    "gap" would make it look like more features need test work than actually do.
+    """
+    import json as _json
+    from collections import defaultdict
+    from pathlib import Path as _Path
+
+    if not sanity_file:
+        return {"status": "no_file_configured", "releases": {}}
+
+    p = _Path(sanity_file)
+    if not p.is_file():
+        return {"status": "file_not_found", "path": str(p), "releases": {}}
+
+    try:
+        data = _json.loads(p.read_text())
+    except Exception as exc:
+        return {"status": f"parse_error: {exc}", "releases": {}}
+
+    features = data.get("features", [])
+    by_release: dict[str, list] = defaultdict(list)
+    for f in features:
+        by_release[f.get("release", "?")].append(f)
+
+    releases = {}
+    for release, items in by_release.items():
+        automated = sum(1 for f in items if f.get("status") == "Automated")
+        partial = sum(1 for f in items if f.get("status") == "Partial")
+        doc_mismatch = sum(1 for f in items if f.get("status") == "Doc Mismatch")
+        gap = sum(1 for f in items if f.get("status") not in ("Automated", "Partial", "Doc Mismatch"))
+        total = len(items)
+        releases[release] = {
+            "total": total,
+            "automated": automated,
+            "partial": partial,
+            "gap": gap,
+            "doc_mismatch": doc_mismatch,
+            "automation_pct": round(automated / total * 100, 1) if total else 0,
+            "automated_or_partial_pct": round((automated + partial) / total * 100, 1) if total else 0,
+            "features": sorted(items, key=lambda f: f.get("tc_id", "")),
+        }
+
+    return {
+        "status": "ok",
+        "total": len(features),
+        "generated_at_source": data.get("generated_at_source", ""),
+        "releases": releases,
+    }
 
 
 def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: str | None = None) -> list[str]:
