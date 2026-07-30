@@ -128,8 +128,10 @@ class ADOClient:
         if cached is not None:
             return cached
 
-        # Route to correct project; query UNDER the PI for all sub-sprint bugs.
-        project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
+        # All bugs live in the AMR project now (migrated from sootballs) —
+        # unlike get_user_stories/get_feature_coverage, no sootballs-project
+        # routing branch applies here.
+        project = self.project
         pi_path = "\\".join(iteration_path.split("\\")[:2])
         query = f"""
             SELECT [System.Id] FROM WorkItems
