@@ -932,7 +932,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         ]
         mttr = round(statistics.median(days), 1)
 
-    bug_state_dist = dict(Counter(b["state"] for b in sprint_bugs).most_common())
     health = _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate)
 
     return {
@@ -959,7 +958,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         "bug_resolution_rate": bug_res_rate,
         "defect_density": defect_density,
         "mttr_days": mttr,
-        "bug_state_breakdown": bug_state_dist,
     }
 
 
