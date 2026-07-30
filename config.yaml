@@ -39,9 +39,6 @@ qa_team_roster:
   - name: "Vasanthi Rajkumar"
     from: "2024-01-01"
     to:
-  - name: "Sugashini Subramanian"
-    from: "2024-01-01"
-    to:
   - name: "Sanjaypkhandan Moovendar"
     from: "2025-06-12"
     to:
@@ -60,6 +57,9 @@ qa_team_roster:
     to:
 
   # ── Former / interim members ───────────────────────────────────────────────────
+  - name: "Sugashini Subramanian"
+    from: "2024-01-01"
+    to: "2025-12-21"
   - name: "Marius-Mihail Gurgu"
     from: "2024-07-18"
     to: "2024-12-12"            # sootballs project only (pre-AMR migration)
@@ -95,14 +95,13 @@ qa_team_roster:
     to: "2026-01-28"
   - name: "Shreenidhi Balaji"
     from: "2025-12-18"
-    to: "2026-02-02"
+    to: "2026-02-03"
 
 # Flat fallback — used only if qa_team_roster is empty.
 # Contains currently active members only.
 qa_team_members:
   - "Aravind Yanamala"
   - "Vasanthi Rajkumar"
-  - "Sugashini Subramanian"
   - "Sanjaypkhandan Moovendar"
   - "Sathish Suryamoorthy"
   - "Saisurya Akella"
