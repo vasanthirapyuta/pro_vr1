@@ -259,20 +259,10 @@ cors_origins: []
 # Sprint definitions — iteration_path must match ADO exactly (backslash-separated).
 # Dates are ISO-8601 (YYYY-MM-DD), treated as UTC.
 sprints:
-  # PI1 Sprint 1 and 2 predate the AMR migration (sootballs project).
-  # iteration_path is a placeholder — these sprints are found via legacy_iteration_map above.
-  - label: "PI1 Sprint 1"
-    iteration_path: "sootballs\\2026.PI1\\PI1 Sprint 1"
-    start: "2026-01-05"
-    end: "2026-01-16"
-    pi: "26PI1"
-
-  - label: "PI1 Sprint 2"
-    iteration_path: "sootballs\\2026.PI1\\PI1 Sprint 2"
-    start: "2026-01-19"
-    end: "2026-01-30"
-    pi: "26PI1"
-
+  # PI1 Sprint 1 and 2 predated the AMR migration (sootballs project) and are
+  # intentionally excluded — all bugs now live in the AMR project (see
+  # ADOClient.get_bugs), queried by iteration_path values like "AMR\26PI1\...",
+  # which those two sprints' sootballs-project paths never matched anyway.
   - label: "PI1 Sprint 3"
     iteration_path: "AMR\\26PI1\\PI1 Sprint 3"
     start: "2026-02-02"

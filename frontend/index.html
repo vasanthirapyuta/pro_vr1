@@ -545,19 +545,6 @@ function BugsPage({ sprintLabel }) {
     }],
   };
 
-  const byArea = bugs.by_area || [];
-  const areaOption = {
-    tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, textStyle: { fontSize: 11 } },
-    grid: { left: 130, right: 40, top: 12, bottom: 44 },
-    xAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
-    yAxis: { type: 'category', data: byArea.map(a => a.area), axisLabel: { fontSize: 11 } },
-    series: [
-      { name: 'Open', type: 'bar', stack: 'a', barMaxWidth: 20, itemStyle: { color: '#f43f5e' }, data: byArea.map(a => a.open) },
-      { name: 'Resolved', type: 'bar', stack: 'a', barMaxWidth: 20, itemStyle: { color: '#10b981' }, data: byArea.map(a => a.total - a.open) },
-    ],
-  };
-
   const bugStateStyle = (state) => {
     const done = state === 'Closed' || state === 'Completed';
     return {
@@ -598,13 +585,6 @@ function BugsPage({ sprintLabel }) {
           <EChart option={ageOption} height={240} />
         </div>
       </div>
-
-      {byArea.length > 0 && (
-        <div className="chart-card">
-          <div className="chart-card-title">Bugs by Area (PI)</div>
-          <EChart option={areaOption} height={Math.max(160, byArea.length * 36)} />
-        </div>
-      )}
 
       {bugs.oldest_open && bugs.oldest_open.length > 0 && (
         <div className="chart-card">
