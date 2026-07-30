@@ -812,7 +812,16 @@ def _strip_parametrize_suffix(title: str) -> str:
     distinct-scenario count. Confirmed against real ADO data: 148 such
     groups (331 TCs) exist within this team's own AreaPath alone, so the
     raw TC count and the de-duplicated scenario count are materially
-    different numbers, not a cosmetic distinction."""
+    different numbers, not a cosmetic distinction.
+
+    This is a best-effort heuristic, not a guaranteed-precise classifier:
+    a title that genuinely ends in a bracketed annotation unrelated to
+    parametrization (e.g. "Verify tote position [WMS]") would be
+    over-merged with any other title differing only in that trailing
+    bracket. Acceptable here because distinct_scenarios is reported
+    alongside the raw TC count, never in place of it — a spot-check of
+    the actual groups found is worthwhile if this number is ever quoted
+    on its own outside the dashboard."""
     t = (title or "").strip()
     for pattern in _PARAM_SUFFIX_PATTERNS:
         t = pattern.sub("", t)
@@ -1190,8 +1199,11 @@ def get_release_feature_coverage(sanity_file: str | None) -> dict:
     "Automated" and "Partial" both count toward automation_pct (a Partial case has
     real, passing automation proving some but not all of the stated expectation —
     still meaningfully covered, not a gap), reported separately so the distinction
-    isn't hidden. "Gap" (any sub-label — Held, Scaffolded, or plain Gap) and
-    "Doc Mismatch" do not count as automated.
+    isn't hidden. "Gap" (any sub-label — Held, Scaffolded, or plain Gap) does not
+    count as automated. "Doc Mismatch" is reported as its own bucket, separate
+    from "gap" — it means the product doesn't match the documented behavior, a
+    documentation-accuracy problem, not a missing-automation one; folding it into
+    "gap" would make it look like more features need test work than actually do.
     """
     import json as _json
     from collections import defaultdict
@@ -1216,18 +1228,20 @@ def get_release_feature_coverage(sanity_file: str | None) -> dict:
 
     releases = {}
     for release, items in by_release.items():
-        automated = sum(1 for f in items if f["status"] == "Automated")
-        partial = sum(1 for f in items if f["status"] == "Partial")
-        gap = sum(1 for f in items if f["status"] not in ("Automated", "Partial"))
+        automated = sum(1 for f in items if f.get("status") == "Automated")
+        partial = sum(1 for f in items if f.get("status") == "Partial")
+        doc_mismatch = sum(1 for f in items if f.get("status") == "Doc Mismatch")
+        gap = sum(1 for f in items if f.get("status") not in ("Automated", "Partial", "Doc Mismatch"))
         total = len(items)
         releases[release] = {
             "total": total,
             "automated": automated,
             "partial": partial,
             "gap": gap,
+            "doc_mismatch": doc_mismatch,
             "automation_pct": round(automated / total * 100, 1) if total else 0,
             "automated_or_partial_pct": round((automated + partial) / total * 100, 1) if total else 0,
-            "features": sorted(items, key=lambda f: f["tc_id"]),
+            "features": sorted(items, key=lambda f: f.get("tc_id", "")),
         }
 
     return {

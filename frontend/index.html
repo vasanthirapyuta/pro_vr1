@@ -946,7 +946,7 @@ function FeatureCoveragePage({ sprintLabel }) {
                 key={r.release}
                 label={`Release ${r.release}`}
                 value={r.automation_pct} unit="%"
-                sub={`${r.automated} automated + ${r.partial} partial + ${r.gap} gap of ${r.total} (${r.automated_or_partial_pct}% has some automation)`}
+                sub={`${r.automated} automated + ${r.partial} partial + ${r.gap} gap${r.doc_mismatch ? ` + ${r.doc_mismatch} doc-mismatch` : ''} of ${r.total} (${r.automated_or_partial_pct}% has some automation)`}
               />
             ))}
           </div>
