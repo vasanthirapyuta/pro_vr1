@@ -24,7 +24,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_ci_stability, get_flaky_tests, get_release_feature_coverage
+from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_ci_stability, get_flaky_tests, get_release_automation_status
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -70,12 +70,6 @@ QA_MEMBERS: list[str] = resolve_qa_members(CFG)   # all-time union — for non-s
 def _qa_members_for_sprint(sprint: dict) -> list[str]:
     """Return QA members active during this sprint using the date-range roster."""
     return resolve_qa_members(CFG, sprint.get("start"), sprint.get("end"))
-# Path to qa_tooling/ado_test_mapping.yaml from the sootballs_tests repo.
-# Override via MAPPING_FILE env var or set sootballs_mapping_file in config.yaml.
-_MAPPING_FILE: str | None = (
-    os.environ.get("MAPPING_FILE")
-    or CFG.get("sootballs_mapping_file")
-)
 # Path to feature_coverage_cache.json produced by traverse_feature_coverage.py.
 _COVERAGE_CACHE_FILE: str | None = (
     os.environ.get("COVERAGE_CACHE_FILE")
@@ -86,10 +80,10 @@ _FLAKY_REPORT_FILE: str | None = (
     os.environ.get("FLAKY_REPORT_FILE")
     or CFG.get("flaky_report_file")
 )
-# Path to amr_master_sanity_status.json produced by gen_amr_master_sanity_suite_v2.py.
-_SANITY_FILE: str | None = (
-    os.environ.get("SANITY_FILE")
-    or CFG.get("amr_master_sanity_file")
+# Path to release_automation_status.yaml — the release-wise feature automation master table.
+_RELEASE_AUTOMATION_FILE: str | None = (
+    os.environ.get("RELEASE_AUTOMATION_FILE")
+    or CFG.get("release_automation_file")
 )
 # GitHub token for nightly health endpoint (reads Actions API, no OAuth needed).
 # Read lazily at request time so it picks up env vars set after process start.
@@ -381,57 +375,31 @@ def testplans():
     })
 
 
-# ── Automation Coverage (Tier 2 — sootballs TCs + AMR WIs) ───────────────────────
+# ── Release Automation (Feature -> Suite ID -> Backend PR -> Test PR -> Status) ──
 
-@app.get("/api/automation_coverage")
-def automation_coverage():
-    """Return test automation coverage combining three data sources:
-      - ado_test_mapping.yaml  (pytest ↔ TC linkage, confirmed + TODO counts)
-      - ADO sootballs          (live AutomationStatus per TC)
-      - ADO AMR (sb_qa tagged) (Work Items driving the automation backlog)
+@app.get("/api/release_automation")
+def release_automation():
+    """Return the release-wise feature automation master table (3.4 through 3.7).
+
+    Each release's real feature content was reconstructed from git tag-range
+    commit analysis across rr_sootballs / sootballs_wms_interface / rr_lbc,
+    cross-referenced against ADO Test Plans/Suites, with the backend product
+    PR and test-automation PR looked up and real (non-skipped) test coverage
+    verified against actual file content. Slack search resolved any gaps
+    git/ADO evidence left open.
+
+    Data comes from release_automation_status.yaml.
+    Set release_automation_file in config.yaml or RELEASE_AUTOMATION_FILE env var.
+
+    Response:
+      status      ok | no_file_configured | file_not_found | parse_error: ...
+      releases    dict {release: {tag_range, total, counted, automated,
+                   written_not_merged, yet_to_automate, manually_verified,
+                   not_automatable, excluded, unverified, automation_pct,
+                   features: [...]}}
+      totals      same status counts summed across all releases
     """
-    data = ado.get_automation_coverage(_MAPPING_FILE)
-    return jsonify({
-        **data,
-        "mapping_file": _MAPPING_FILE,
-    })
-
-
-# ── Feature Coverage (Feature/Story → TC Automation) ─────────────────────────
-
-@app.get("/api/feature_coverage")
-def feature_coverage():
-    """Return Feature-level TC automation coverage for a sprint.
-
-    Each Feature/User Story in the sprint shows:
-      - total TCs linked via 'Tested By' relation
-      - how many are Automated
-      - coverage percentage
-    """
-    sprint = _resolve_sprint(request.args.get("sprint"))
-    if sprint is None:
-        return jsonify({"error": "Sprint not found"}), 404
-
-    data = ado.get_feature_coverage(sprint["iteration_path"], _qa_members_for_sprint(sprint), QA_TAG)
-    total_features = len(data)
-    fully_covered  = sum(1 for f in data if f["coverage_pct"] == 100 and f["total_tcs"] > 0)
-    no_tcs         = sum(1 for f in data if f["total_tcs"] == 0)
-    total_tcs      = sum(f["total_tcs"] for f in data)
-    automated_tcs  = sum(f["automated_tcs"] for f in data)
-
-    return jsonify({
-        "sprint": sprint["label"],
-        "summary": {
-            "total_features": total_features,
-            "fully_covered": fully_covered,
-            "partially_covered": total_features - fully_covered - no_tcs,
-            "no_tcs_linked": no_tcs,
-            "total_tcs": total_tcs,
-            "automated_tcs": automated_tcs,
-            "overall_coverage_pct": round(automated_tcs / total_tcs * 100, 1) if total_tcs else 0,
-        },
-        "items": data,
-    })
+    return jsonify(get_release_automation_status(_RELEASE_AUTOMATION_FILE))
 
 
 # ── Feature Coverage v2 (cache-driven — from traverse_feature_coverage.py) ───
@@ -458,19 +426,6 @@ def feature_coverage_v2():
     sprint = request.args.get("sprint")  # optional filter
     data = ado.get_feature_coverage_v2(_COVERAGE_CACHE_FILE, sprint_filter=sprint or None)
     return jsonify(data)
-
-
-# ── Engineer Automation (who automated what) ──────────────────────────────────
-
-@app.get("/api/engineer_automation")
-def engineer_automation():
-    """Return per-engineer automation counts from ado_test_mapping.yaml github_pr field."""
-    data = ado.get_engineer_automation(_MAPPING_FILE)
-    total_tcs = sum(e["tcs_automated"] for e in data)
-    return jsonify({
-        "total_tcs_attributed": total_tcs,
-        "engineers": data,
-    })
 
 
 # ── Nightly CI Health (GitHub Actions API) ───────────────────────────────────────
@@ -535,31 +490,6 @@ def flaky_tests():
       entries         list of {file, line, class, function, reruns, added_date, test_area}
     """
     return jsonify(get_flaky_tests(_FLAKY_REPORT_FILE))
-
-
-# ── Release-Scoped Sanity Coverage (AMR Master Sanity, 3.4-3.7) ──────────────────
-
-@app.get("/api/release_feature_coverage")
-def release_feature_coverage():
-    """Return the 51 AMR Master Sanity TC-SAN cases grouped by release
-    (3.4/3.5/3.6/3.7), each with a real automation status.
-
-    A curated alternative to ADO's own "Feature" work item type, which is
-    too sparse to represent release-level coverage on its own (39 total
-    Features project-wide, only 5 tagged to any release).
-
-    Data comes from amr_master_sanity_status.json built by:
-      python3 ~/Downloads/gen_amr_master_sanity_suite_v2.py
-
-    Set amr_master_sanity_file in config.yaml or SANITY_FILE env var.
-
-    Response:
-      status      ok | no_file_configured | file_not_found | parse_error: ...
-      total       total TC-SAN cases across all releases
-      releases    dict {release: {total, automated, partial, gap,
-                   automation_pct, automated_or_partial_pct, features: [...]}}
-    """
-    return jsonify(get_release_feature_coverage(_SANITY_FILE))
 
 
 # ── CI Fix PR Coverage ────────────────────────────────────────────────────────────
@@ -632,88 +562,6 @@ def ci_fix_coverage():
         "wi_ids_to_tag":      all_wi_ids,
         "linked_prs":         [_pr_summary(p) for p in sorted(linked, key=lambda x: -x["number"])],
         "unlinked_prs":       [_pr_summary(p) for p in sorted(post_unlinked, key=lambda x: -x["number"])],
-    })
-
-
-# ── sb_qa PR Coverage ─────────────────────────────────────────────────────────────
-
-@app.get("/api/sb_qa_coverage")
-def sb_qa_coverage():
-    """Return sb_qa-labeled PR coverage from the snapshot — new QA test automation /
-    feature-coverage PRs (GitHub label `sb_qa`, applied via label_prs.yml based on
-    feat:/test: title prefix), which ones link to an ADO work item, and which ones
-    are missing from ado_test_mapping.yaml's github_pr field (i.e. the automation
-    they added isn't yet reflected in the Automation tab's coverage numbers).
-
-    Reads from the snapshot file built by build_snapshot.py (needs a snapshot built
-    after label backfill — labels weren't captured before 2026-07-11).
-    Set snapshot_file in config.yaml or SNAPSHOT_FILE env var.
-
-    Response:
-      total_sb_qa_prs           total sb_qa-labeled PRs in snapshot
-      linked_count              PRs with an AB# ADO link
-      unlinked_count            PRs without any AB# link
-      in_mapping_count          PRs whose number appears in ado_test_mapping.yaml github_pr
-      missing_from_mapping      PRs not found in the mapping file (candidates to backfill)
-      sb_qa_prs                 full list, newest first
-    """
-    import json as _json
-    from pathlib import Path as _Path
-
-    if not _SNAPSHOT_FILE:
-        return jsonify({"status": "no_snapshot_configured"}), 200
-
-    snap_path = _Path(_SNAPSHOT_FILE)
-    if not snap_path.is_file():
-        return jsonify({"status": "snapshot_not_found", "path": str(snap_path)}), 200
-
-    try:
-        snap = _json.loads(snap_path.read_text())
-    except Exception as exc:
-        return jsonify({"status": f"parse_error: {exc}"}), 200
-
-    prs = snap.get("github", {}).get("prs", [])
-    sb_qa_prs = [p for p in prs if "sb_qa" in (p.get("labels") or [])]
-
-    def _pr_summary(p: dict) -> dict:
-        return {
-            "number":     p["number"],
-            "title":      p["title"],
-            "merged_at":  p.get("merged_at", ""),
-            "ado_wi_ids": p.get("ado_wi_ids", []),
-            "url":        f"https://github.com/rapyuta-robotics/sootballs_tests/pull/{p['number']}",
-        }
-
-    linked   = [p for p in sb_qa_prs if p.get("ado_wi_ids")]
-    unlinked = [p for p in sb_qa_prs if not p.get("ado_wi_ids")]
-
-    pr_numbers_in_mapping: set = set()
-    if _MAPPING_FILE:
-        mapping_path = _Path(_MAPPING_FILE)
-        if mapping_path.is_file():
-            try:
-                mapping_raw = yaml.safe_load(mapping_path.read_text()) or {}
-                for m in mapping_raw.get("mappings", []) or []:
-                    if m.get("github_pr"):
-                        pr_numbers_in_mapping.add(m["github_pr"])
-            except yaml.YAMLError:
-                logger.warning("Could not parse mapping file %s for sb_qa_coverage", mapping_path)
-
-    in_mapping     = [p for p in sb_qa_prs if p["number"] in pr_numbers_in_mapping]
-    missing        = [p for p in sb_qa_prs if p["number"] not in pr_numbers_in_mapping]
-
-    return jsonify({
-        "status":                "ok",
-        "snapshot_date":         snap.get("cutoff_date", ""),
-        "total_sb_qa_prs":       len(sb_qa_prs),
-        "linked_count":          len(linked),
-        "unlinked_count":        len(unlinked),
-        "link_rate_pct":         round(100 * len(linked) / len(sb_qa_prs), 1) if sb_qa_prs else 0,
-        "in_mapping_count":      len(in_mapping),
-        "missing_from_mapping_count": len(missing),
-        "mapping_coverage_pct":  round(100 * len(in_mapping) / len(sb_qa_prs), 1) if sb_qa_prs else 0,
-        "sb_qa_prs":             [_pr_summary(p) for p in sorted(sb_qa_prs, key=lambda x: -x["number"])],
-        "missing_from_mapping":  [_pr_summary(p) for p in sorted(missing, key=lambda x: -x["number"])],
     })
 
 
