@@ -97,7 +97,8 @@
 
     /* ── Plan pills ── */
     .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
-    .plan-pill { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; }
+    .plan-pill { display: block; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; text-decoration: none; transition: border-color .15s; }
+    .plan-pill:hover { border-color: var(--indigo); }
     .plan-pill strong { display: block; font-size: 13px; margin-bottom: 2px; color: var(--text); }
     .plan-pill span { color: var(--muted); }
   </style>
@@ -714,59 +715,21 @@ function TestPlansPage() {
   if (loading) return <Spinner />;
   if (error) return <ErrorNotice message={error} />;
 
-  const tc    = data?.test_case_summary || {};
   const plans = data?.plans || [];
-
-  const autoOption = tc.total ? {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', radius: ['50%', '72%'], center: ['50%', '50%'],
-      label: { show: true, formatter: '{b}\n{d}%', fontSize: 12 },
-      data: [
-        { name: 'Automated',     value: tc.automated,     itemStyle: { color: '#10b981' } },
-        { name: 'Not Automated', value: tc.not_automated, itemStyle: { color: '#e2e8f0' } },
-      ],
-    }],
-  } : null;
 
   return (
     <div className="page">
-      <div className="notice">
-        <span className="notice-icon">ℹ️</span>
-        <div>
-          <strong>Data source:</strong> Test Plans in the <code>sootballs</code> ADO project.&nbsp;
-          {data?.migration_note}
-        </div>
-      </div>
-
-      {tc.total > 0 && (
-        <>
-          <div className="section-title">Test Case Overview ({tc.area_path || 'sootballs\\qa'})</div>
-          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', marginBottom: 24 }}>
-            <KPICard label="Total Test Cases" value={tc.total} sub="raw TC count, incl. parametrized variants" />
-            <KPICard label="Distinct Scenarios" value={tc.distinct_scenarios} sub="parametrized variants de-duplicated" />
-            <KPICard label="Automated" value={tc.automated} sub={`${tc.automation_rate}% of total TCs`} />
-            <KPICard label="Automation Rate (raw TCs)" value={tc.automation_rate} unit="%" />
-            <KPICard label="Automation Rate (distinct scenarios)" value={tc.distinct_scenario_automation_rate} unit="%" sub={`${tc.distinct_scenarios_automated} of ${tc.distinct_scenarios} scenarios have ≥1 automated variant`} />
-          </div>
-          <div className="chart-row chart-row-2" style={{ marginBottom: 24 }}>
-            <div className="chart-card" style={{ gridColumn: '1 / -1' }}>
-              <div className="chart-card-title">
-                Automation Coverage <span className="badge badge-tier2">Tier 2 · sootballs project</span>
-              </div>
-              <EChart option={autoOption} height={260} />
-            </div>
-          </div>
-        </>
-      )}
-
       <div className="section-title">Test Plans ({plans.length} plans in sootballs project)</div>
       <div className="plan-grid">
         {plans.map(p => (
-          <div key={p.id} className="plan-pill">
+          <a
+            key={p.id} className="plan-pill"
+            href={`https://dev.azure.com/rapyuta-robotics/sootballs/_testManagement/define?planId=${p.id}`}
+            target="_blank" rel="noreferrer"
+          >
             <strong>{p.name}</strong>
             <span>{p.iteration || 'No iteration'} · {p.state}</span>
-          </div>
+          </a>
         ))}
       </div>
     </div>

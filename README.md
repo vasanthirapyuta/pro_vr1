@@ -186,9 +186,9 @@ release tag at all — confirmed too sparse to represent release-level coverage 
 |-----|--------------|
 | 🏠 Overview | Sprint KPI cards (incl. CI Stability %), carry-over, bug rate, user story state mix |
 | 📈 Trends | KPI trends across sprints (velocity, closure rate, automation %) |
-| 🐛 Bug Analytics | PI-wide bug flow (created vs. resolved), lead time, aging, by-area breakdown |
+| 🐛 Bug Analytics | PI-wide bug flow (created vs. resolved), lead time, aging |
 | 👤 Per Engineer | Individual story completion per QA team member |
-| 🧪 Test Plans | ADO Test Plans; Test Case overview with raw + distinct-scenario automation rates |
+| 🧪 Test Plans | List of ADO Test Plans in the sootballs project, linked out to each plan |
 | 🤖 Automation | Mapping file coverage, per-plan progress, AMR WI cross-links, sb_qa PR coverage |
 | 🎯 Feature Coverage | Release Sanity Coverage (3.4–3.7) + sprint-scoped Feature → TC traceability |
 
