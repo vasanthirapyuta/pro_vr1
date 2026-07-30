@@ -773,7 +773,7 @@ class ADOClient:
             "id": f.get("System.Id"),
             "title": f.get("System.Title", ""),
             "type": f.get("System.WorkItemType", ""),
-            "state": f.get("System.State", ""),
+            "state": _canonical_state(f.get("System.State", "")),
             "assignee": (
                 assignee.get("displayName", "") if isinstance(assignee, dict)
                 else str(assignee or "")
@@ -796,6 +796,28 @@ class ADOClient:
 def _esc(value: str) -> str:
     """Escape a value for safe embedding in a single-quoted WIQL string."""
     return value.replace("'", "''")
+
+
+# ADO lets users/automation free-type a work item's state box in some views,
+# so the same logical state ("Ready To Test") shows up under multiple
+# casings in raw System.State data. Every consumer of "state" downstream
+# (state_distribution, BUG_DONE/US_DONE membership) compares by exact string,
+# so an uncanonicalized casing variant silently fragments a KPI bucket
+# instead of erroring — canonicalize once, here, at ingestion.
+_CANONICAL_STATES = [
+    "Reported", "Assigned", "In Progress", "In Review", "Ready To Test",
+    "Postponed", "Waiting for Release", "Resolved", "Closed", "Completed",
+    "Duplicate", "Not a Bug", "Blocked",
+]
+_STATE_BY_CASEFOLD = {s.casefold(): s for s in _CANONICAL_STATES}
+
+
+def _canonical_state(raw: str) -> str:
+    """Fold known-state casing variants to one canonical spelling.
+    An unrecognized state passes through unchanged, so a genuinely new ADO
+    workflow state is never hidden or dropped, only left uncanonicalized."""
+    raw = (raw or "").strip()
+    return _STATE_BY_CASEFOLD.get(raw.casefold(), raw)
 
 
 _PARAM_SUFFIX_PATTERNS = [
