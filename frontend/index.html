@@ -54,7 +54,6 @@
     /* ── KPI Cards ── */
     .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
     .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow); }
-    .kpi-card.tier3 { background: #f8fafc; border-style: dashed; border-color: #cbd5e1; }
     .kpi-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
     .kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 6px; }
     .kpi-value.green { color: var(--emerald); }
@@ -62,7 +61,6 @@
     .kpi-value.red   { color: var(--rose); }
     .kpi-trend { font-size: 12px; font-weight: 500; }
     .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .tier3-label { font-size: 11px; font-weight: 600; color: #94a3b8; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-top: 6px; }
 
     /* ── Chart cards ── */
     .chart-row { display: grid; gap: 16px; margin-bottom: 24px; }
@@ -73,7 +71,6 @@
     .chart-card-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
     .chart-card-title .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
     .badge-tier2 { background: #dbeafe; color: #1d4ed8; }
-    .badge-tier3 { background: #fef3c7; color: #92400e; }
 
     /* ── Comparison table ── */
     .table-wrap { overflow-x: auto; }
@@ -132,8 +129,6 @@
  *   Overview first: gauge + KPI cards → 30-second read for stand-up.
  *   Trends second: multi-sprint line chart → context for sprint review.
  *   Bugs + Engineers last: drill-down for root-cause analysis.
- *   Tier 3 KPIs show amber placeholder cards (not hidden) so management sees the
- *   intended full picture and understands what approval is pending.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -213,16 +208,7 @@ function EChart({ option, height = 300 }) {
 
 // ── KPI Card ─────────────────────────────────────────────────────────────────
 
-function KPICard({ label, value, unit = '', trend, lowerBetter = false, sub, tier = 1 }) {
-  if (tier === 3) return (
-    <div className="kpi-card tier3" role="region" aria-label={`${label} — awaiting approval`}>
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value" style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.4 }}>—</div>
-      <span className="tier3-label">⏳ Awaiting Mgmt Approval</span>
-      <div className="kpi-sub">See TIER3_CHANGES.md</div>
-    </div>
-  );
-
+function KPICard({ label, value, unit = '', trend, lowerBetter = false, sub }) {
   let valClass = '';
   if (value !== null && value !== undefined) {
     const n = Number(value);
@@ -663,7 +649,6 @@ function BugsPage({ sprintLabel }) {
         <KPICard label="Open Backlog (PI)" value={openBacklog} lowerBetter sub={`of ${bugs.pi_total} in ${bugs.pi}`} />
         <KPICard label="Time to Resolve" value={ttr.median} unit=" d" lowerBetter sub={ttr.count ? `median · P90 ${ttr.p90}d · n=${ttr.count}` : 'no data'} />
         <KPICard label="Time to Verify" value={ttv.median} unit=" d" lowerBetter sub={ttv.count ? `resolved→closed · P90 ${ttv.p90}d` : 'no data'} />
-        <KPICard label="Test Exec Hours" tier={3} />
       </div>
 
       <div className="chart-row chart-row-2">
@@ -855,34 +840,11 @@ function TestPlansPage() {
             <KPICard label="Automation Rate (distinct scenarios)" value={tc.distinct_scenario_automation_rate} unit="%" sub={`${tc.distinct_scenarios_automated} of ${tc.distinct_scenarios} scenarios have ≥1 automated variant`} />
           </div>
           <div className="chart-row chart-row-2" style={{ marginBottom: 24 }}>
-            <div className="chart-card">
+            <div className="chart-card" style={{ gridColumn: '1 / -1' }}>
               <div className="chart-card-title">
                 Automation Coverage <span className="badge badge-tier2">Tier 2 · sootballs project</span>
               </div>
               <EChart option={autoOption} height={260} />
-            </div>
-            <div className="chart-card">
-              <div className="chart-card-title">
-                Tier 3 KPIs — Pending Approval <span className="badge badge-tier3">Awaiting Mgmt Sign-off</span>
-              </div>
-              <div style={{ padding: '16px 0' }}>
-                {[
-                  ['Sprint-level Automation Linking', 'Link test plans to sprint iterations in AMR project'],
-                  ['Estimation Slip Rate (exact)',     'Requires TargetDate to be set on all User Stories'],
-                  ['Test Execution Hours',            'Requires team to log CompletedWork on QA Tasks'],
-                ].map(([title, desc]) => (
-                  <div key={title} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: 18 }}>⏳</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{title}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-                See <code>TIER3_CHANGES.md</code> for the full change request document.
-              </div>
             </div>
           </div>
         </>

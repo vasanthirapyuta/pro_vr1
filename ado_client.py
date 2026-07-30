@@ -9,9 +9,9 @@ Filtering strategy (confirmed from live ADO data, 2026-05-11):
   - Both          → OR-condition: item tagged `sb_qa` is always included regardless of assignee
   - Story points  → absent on ~75 % of items in this project; count-based metrics are primary
   - TargetDate    → universally unset; sprint end date used as implicit deadline
-  - CompletedWork → universally unset; test execution hours deferred to Tier 3
+  - CompletedWork → universally unset; test execution hours not currently derivable
   - Severity/Priority → set on <2% of recent Bugs (verified 2026-07-10); not usable for
-                    weighted metrics until the team adopts the field (see TIER3_CHANGES.md)
+                    weighted metrics until the team adopts the field
   - Tags on Bugs  → 0 of 1020 recent Bugs have any tag; no escape/regression convention
                     exists yet — do not derive that signal from tags
 
