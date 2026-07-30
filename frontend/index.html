@@ -567,9 +567,10 @@ function BugsPage({ sprintLabel }) {
   if (!bugs) return null;
 
   const stateColors = {
-    Closed: '#10b981', Completed: '#10b981', Reported: '#94a3b8',
-    Assigned: '#6366f1', Postponed: '#f59e0b', Duplicate: '#cbd5e1',
-    'Not a Bug': '#e2e8f0', Blocked: '#f43f5e',
+    Assigned: '#06b6d4', Blocked: '#8b5cf6', Closed: '#65a30d', Completed: '#65a30d',
+    Duplicate: '#ec4899', 'In Progress': '#f97316', 'In Review': '#10b981',
+    'Not a Bug': '#92400e', Postponed: '#0d9488', 'Ready To Test': '#6366f1',
+    'Ready to Test': '#6366f1', Reported: '#a21caf', 'Waiting for Release': '#f43f5e',
   };
 
   const stateOption = {
