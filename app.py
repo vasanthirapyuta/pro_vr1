@@ -368,7 +368,6 @@ def _oldest_open_bugs(bugs: list[dict], limit: int = 10) -> list[dict]:
 @app.get("/api/testplans")
 def testplans():
     plans = ado.get_test_plans()
-    tc_summary = ado.get_test_case_summary()
     return jsonify({
         "plans": [
             {
@@ -379,14 +378,6 @@ def testplans():
             }
             for p in plans
         ],
-        "test_case_summary": tc_summary,
-        "source_project": CFG["ado"]["testplans_project"],
-        "migration_pending": True,
-        "migration_note": (
-            "Test Plans currently reside in the 'sootballs' ADO project. "
-            "Migrating to the 'AMR' project would let sprint-level automation metrics link directly "
-            "to sprint iterations — deferred for now, not an active plan."
-        ),
     })
 
 
