@@ -274,33 +274,6 @@ function colorClass(val, lowerBetter = false) {
   return n >= 75 ? 'td-good' : n >= 50 ? 'td-warn' : 'td-bad';
 }
 
-function HealthGauge({ score }) {
-  const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#f43f5e';
-  const label = score >= 75 ? 'On Track' : score >= 50 ? 'Needs Attention' : 'At Risk';
-
-  const option = {
-    series: [{
-      type: 'gauge',
-      startAngle: 200, endAngle: -20,
-      min: 0, max: 100,
-      radius: '90%',
-      pointer: { show: false },
-      progress: { show: true, width: 20, itemStyle: { color } },
-      axisLine: { lineStyle: { width: 20, color: [[1, '#e2e8f0']] } },
-      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      detail: {
-        valueAnimation: true,
-        fontSize: 36, fontWeight: 700, color,
-        formatter: '{value}',
-        offsetCenter: [0, '10%'],
-      },
-      title: { fontSize: 13, color: '#64748b', offsetCenter: [0, '35%'] },
-      data: [{ value: score, name: label }],
-    }],
-  };
-  return <EChart option={option} height={220} />;
-}
-
 // ── Overview Page ─────────────────────────────────────────────────────────────
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -344,16 +317,6 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
     },
   }));
 
-  const bugStateData = Object.entries(kpi.bug_state_breakdown || {}).map(([name, value]) => ({
-    name, value,
-    itemStyle: {
-      color: (name === 'Closed' || name === 'Completed') ? '#10b981' :
-             name === 'Reported' ? '#94a3b8' : name === 'Assigned' ? '#6366f1' :
-             name === 'Postponed' ? '#f59e0b' : name === 'Duplicate' ? '#cbd5e1' :
-             name === 'Not a Bug' ? '#e2e8f0' : name === 'Blocked' ? '#f43f5e' : '#64748b',
-    },
-  }));
-
   const ciSuiteLabel = (w) => {
     if (!w || w.status !== 'ok') return '—';
     const dateNote = w.is_stale ? ` (${formatIsoDateShort(w.date)})` : '';
@@ -377,14 +340,7 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
       </div>
 
       <div className="chart-row chart-row-2">
-        <div className="chart-card">
-          <div className="chart-card-title">Overall QA Health Score</div>
-          <HealthGauge score={kpi.health_score} />
-          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-            Weighted: Completion 35% · Bug Resolution 25% · Unplanned 20% · Carry-Over 20%
-          </div>
-        </div>
-        <div className="chart-card">
+        <div className="chart-card" style={kpi.bug_count > 0 ? undefined : { gridColumn: '1 / -1' }}>
           <div className="chart-card-title">User Story State Distribution</div>
           <EChart height={220} option={{
             tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
@@ -392,21 +348,11 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
             series: [{ type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'], label: { show: false }, data: stateDonutData }],
           }} />
         </div>
-      </div>
 
-      {kpi.bug_count > 0 && (
-        <div className="chart-row chart-row-2">
-          <div className="chart-card">
-            <div className="chart-card-title">Bug State Breakdown</div>
-            <EChart height={200} option={{
-              tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-              legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 12 } },
-              series: [{ type: 'pie', radius: ['40%', '68%'], center: ['35%', '50%'], label: { show: false }, data: bugStateData }],
-            }} />
-          </div>
+        {kpi.bug_count > 0 && (
           <div className="chart-card">
             <div className="chart-card-title">Velocity — Story Count</div>
-            <EChart height={200} option={{
+            <EChart height={220} option={{
               tooltip: { trigger: 'axis' },
               xAxis: { type: 'category', data: ['Completed', 'In Progress', 'Carry-Over', 'Unplanned'], axisLabel: { fontSize: 11 } },
               yAxis: { type: 'value', minInterval: 1 },
@@ -423,8 +369,8 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
               }],
             }} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {last3.length > 1 && (
         <>
@@ -447,7 +393,6 @@ function OverviewPage({ sprintLabel, onCacheRefreshed }) {
                     ['Carry-Over Rate',  'carry_over_rate',    '%', true],
                     ['Defect Density',   'defect_density',     '',  true],
                     ['MTTR (days)',      'mttr_days',          '',  true],
-                    ['Health Score',     'health_score',       '',  false],
                   ].map(([label, key, unit, lb]) => (
                     <tr key={key}>
                       <td style={{ fontWeight: 500 }}>{label}</td>
@@ -505,15 +450,6 @@ function TrendsPage() {
     ],
   };
 
-  const healthOption = {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 50, right: 24, top: 16, bottom: 48 },
-    xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 11, rotate: 30 } },
-    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}', fontSize: 10 } },
-    visualMap: { show: false, min: 0, max: 100, inRange: { color: ['#f43f5e', '#f59e0b', '#10b981'] } },
-    series: [{ type: 'bar', data: trends.map(t => t.health_score), barMaxWidth: 40, label: { show: true, position: 'top', fontSize: 10 } }],
-  };
-
   return (
     <div className="page">
       <div className="section-title">KPI Trends Across Sprints</div>
@@ -524,32 +460,25 @@ function TrendsPage() {
           Solid lines: percentage metrics (left axis) · Dashed lines: count metrics (right axis)
         </div>
       </div>
-      <div className="chart-row chart-row-2">
-        <div className="chart-card">
-          <div className="chart-card-title">Health Score per Sprint</div>
-          <EChart option={healthOption} height={250} />
-        </div>
-        <div className="chart-card">
-          <div className="section-title" style={{ marginBottom: 12 }}>Sprint Summary Table</div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Sprint</th><th>Stories</th><th>Done %</th><th>Bugs</th><th>Bug Res %</th><th>Health</th></tr>
-              </thead>
-              <tbody>
-                {trends.map(t => (
-                  <tr key={t.sprint}>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{t.sprint}</td>
-                    <td>{t.total_user_stories}</td>
-                    <td className={colorClass(t.completion_rate)}>{t.completion_rate}%</td>
-                    <td>{t.bug_count}</td>
-                    <td className={colorClass(t.bug_resolution_rate)}>{t.bug_resolution_rate}%</td>
-                    <td className={colorClass(t.health_score)}>{t.health_score}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="chart-card">
+        <div className="section-title" style={{ marginBottom: 12 }}>Sprint Summary Table</div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Sprint</th><th>Stories</th><th>Done %</th><th>Bugs</th><th>Bug Res %</th></tr>
+            </thead>
+            <tbody>
+              {trends.map(t => (
+                <tr key={t.sprint}>
+                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{t.sprint}</td>
+                  <td>{t.total_user_stories}</td>
+                  <td className={colorClass(t.completion_rate)}>{t.completion_rate}%</td>
+                  <td>{t.bug_count}</td>
+                  <td className={colorClass(t.bug_resolution_rate)}>{t.bug_resolution_rate}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

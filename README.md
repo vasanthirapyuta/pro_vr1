@@ -184,7 +184,7 @@ release tag at all — confirmed too sparse to represent release-level coverage 
 
 | Tab | What it shows |
 |-----|--------------|
-| 🏠 Overview | Sprint KPI cards (incl. CI Stability %), health score, carry-over, bug rate |
+| 🏠 Overview | Sprint KPI cards (incl. CI Stability %), carry-over, bug rate, user story state mix |
 | 📈 Trends | KPI trends across sprints (velocity, closure rate, automation %) |
 | 🐛 Bug Analytics | PI-wide bug flow (created vs. resolved), lead time, aging, by-area breakdown |
 | 👤 Per Engineer | Individual story completion per QA team member |
