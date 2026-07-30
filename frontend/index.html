@@ -908,6 +908,7 @@ function FeatureCoveragePage({ sprintLabel }) {
   const { data, loading, error } = useFetch(url);
   const url2 = '/api/engineer_automation';
   const { data: engData } = useFetch(url2);
+  const { data: sanity, loading: sanityLoading } = useFetch('/api/release_feature_coverage');
 
   if (loading) return <Spinner />;
   if (error)   return <ErrorNotice message={error} />;
@@ -917,9 +918,69 @@ function FeatureCoveragePage({ sprintLabel }) {
   const coverageColor = s.overall_coverage_pct >= 70 ? '#10b981'
                        : s.overall_coverage_pct >= 30 ? '#f59e0b' : '#f43f5e';
 
+  const RELEASE_ORDER = ['3.4', '3.5', '3.6', '3.7'];
+  const releaseCards = sanity && sanity.status === 'ok'
+    ? RELEASE_ORDER.filter(r => sanity.releases[r]).map(r => ({ release: r, ...sanity.releases[r] }))
+    : [];
+  const allSanityFeatures = releaseCards.flatMap(r => r.features);
+  const statusStyle = (label) => {
+    if (label === 'Automated') return { background: '#dcfce7', color: '#10b981' };
+    if (label === 'Partial')   return { background: '#fef3c7', color: '#b45309' };
+    if (label === 'Doc Mismatch') return { background: '#e2e8f0', color: '#475569' };
+    return { background: '#fee2e2', color: '#dc2626' }; // Gap, Held, Scaffolded
+  };
+
   return (
-    <div className="page-root">
+    <div className="page">
       <div className="section-title">
+        Release Sanity Coverage (3.4 – 3.7)
+        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>
+          AMR Master Sanity · {sanity && sanity.status === 'ok' ? sanity.total : '…'} TC-SAN cases
+        </span>
+      </div>
+      {sanityLoading ? <Spinner /> : sanity && sanity.status === 'ok' ? (
+        <>
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))' }}>
+            {releaseCards.map(r => (
+              <KPICard
+                key={r.release}
+                label={`Release ${r.release}`}
+                value={r.automation_pct} unit="%"
+                sub={`${r.automated} automated + ${r.partial} partial + ${r.gap} gap of ${r.total} (${r.automated_or_partial_pct}% has some automation)`}
+              />
+            ))}
+          </div>
+          <div className="table-wrap" style={{ marginTop: 16 }}>
+            <table>
+              <thead>
+                <tr><th>TC-SAN</th><th>Release</th><th>Feature</th><th>Ref</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {allSanityFeatures.map(f => (
+                  <tr key={f.tc_id}>
+                    <td className="td-muted">{f.tc_id}</td>
+                    <td>{f.release}</td>
+                    <td style={{ maxWidth: 380 }}>{f.title}</td>
+                    <td className="td-muted">{f.proj_ref}</td>
+                    <td>
+                      <span className="badge" style={{ ...statusStyle(f.status_label), fontSize: 11 }} title={f.note || ''}>
+                        {f.status_label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="notice notice-slate">
+          <span className="notice-icon">ℹ</span>
+          <div>Release sanity coverage unavailable: <code>{sanity ? sanity.status : 'loading'}</code>. Needs amr_master_sanity_file configured and gen_amr_master_sanity_suite_v2.py run at least once.</div>
+        </div>
+      )}
+
+      <div className="section-title" style={{ marginTop: 32 }}>
         Feature Coverage — Automation Traceability
         <span className="badge badge-tier2" style={{ marginLeft: 8 }}>
           Feature → TC → Automated
@@ -927,7 +988,7 @@ function FeatureCoveragePage({ sprintLabel }) {
       </div>
 
       {/* Summary KPI row */}
-      <div className="kpi-row">
+      <div className="kpi-grid">
         <div className="kpi-card">
           <div className="kpi-value" style={{ color: coverageColor }}>
             {s.overall_coverage_pct}%

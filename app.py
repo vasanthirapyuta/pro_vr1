@@ -24,7 +24,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_ci_stability, get_flaky_tests
+from ado_client import ADOClient, resolve_qa_members, get_nightly_health, get_ci_stability, get_flaky_tests, get_release_feature_coverage
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +85,11 @@ _COVERAGE_CACHE_FILE: str | None = (
 _FLAKY_REPORT_FILE: str | None = (
     os.environ.get("FLAKY_REPORT_FILE")
     or CFG.get("flaky_report_file")
+)
+# Path to amr_master_sanity_status.json produced by gen_amr_master_sanity_suite_v2.py.
+_SANITY_FILE: str | None = (
+    os.environ.get("SANITY_FILE")
+    or CFG.get("amr_master_sanity_file")
 )
 # GitHub token for nightly health endpoint (reads Actions API, no OAuth needed).
 # Read lazily at request time so it picks up env vars set after process start.
@@ -551,6 +556,31 @@ def flaky_tests():
       entries         list of {file, line, class, function, reruns, added_date, test_area}
     """
     return jsonify(get_flaky_tests(_FLAKY_REPORT_FILE))
+
+
+# ── Release-Scoped Sanity Coverage (AMR Master Sanity, 3.4-3.7) ──────────────────
+
+@app.get("/api/release_feature_coverage")
+def release_feature_coverage():
+    """Return the 51 AMR Master Sanity TC-SAN cases grouped by release
+    (3.4/3.5/3.6/3.7), each with a real automation status.
+
+    A curated alternative to ADO's own "Feature" work item type, which is
+    too sparse to represent release-level coverage on its own (39 total
+    Features project-wide, only 5 tagged to any release).
+
+    Data comes from amr_master_sanity_status.json built by:
+      python3 ~/Downloads/gen_amr_master_sanity_suite_v2.py
+
+    Set amr_master_sanity_file in config.yaml or SANITY_FILE env var.
+
+    Response:
+      status      ok | no_file_configured | file_not_found | parse_error: ...
+      total       total TC-SAN cases across all releases
+      releases    dict {release: {total, automated, partial, gap,
+                   automation_pct, automated_or_partial_pct, features: [...]}}
+    """
+    return jsonify(get_release_feature_coverage(_SANITY_FILE))
 
 
 # ── CI Fix PR Coverage ────────────────────────────────────────────────────────────

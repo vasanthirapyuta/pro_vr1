@@ -1180,6 +1180,64 @@ def get_flaky_tests(flaky_report_path: str | None) -> dict:
         return {"status": f"parse_error: {exc}", "total_flaky": 0, "entries": []}
 
 
+def get_release_feature_coverage(sanity_file: str | None) -> dict:
+    """Read amr_master_sanity_status.json (built by gen_amr_master_sanity_suite_v2.py)
+    and group its 51 TC-SAN sanity cases by release (3.4/3.5/3.6/3.7), each with a
+    real automation status — a curated alternative to ADO's own sparse "Feature"
+    work item type for representing release-level coverage (see config.yaml
+    comment on amr_master_sanity_file for why).
+
+    "Automated" and "Partial" both count toward automation_pct (a Partial case has
+    real, passing automation proving some but not all of the stated expectation —
+    still meaningfully covered, not a gap), reported separately so the distinction
+    isn't hidden. "Gap" (any sub-label — Held, Scaffolded, or plain Gap) and
+    "Doc Mismatch" do not count as automated.
+    """
+    import json as _json
+    from collections import defaultdict
+    from pathlib import Path as _Path
+
+    if not sanity_file:
+        return {"status": "no_file_configured", "releases": {}}
+
+    p = _Path(sanity_file)
+    if not p.is_file():
+        return {"status": "file_not_found", "path": str(p), "releases": {}}
+
+    try:
+        data = _json.loads(p.read_text())
+    except Exception as exc:
+        return {"status": f"parse_error: {exc}", "releases": {}}
+
+    features = data.get("features", [])
+    by_release: dict[str, list] = defaultdict(list)
+    for f in features:
+        by_release[f.get("release", "?")].append(f)
+
+    releases = {}
+    for release, items in by_release.items():
+        automated = sum(1 for f in items if f["status"] == "Automated")
+        partial = sum(1 for f in items if f["status"] == "Partial")
+        gap = sum(1 for f in items if f["status"] not in ("Automated", "Partial"))
+        total = len(items)
+        releases[release] = {
+            "total": total,
+            "automated": automated,
+            "partial": partial,
+            "gap": gap,
+            "automation_pct": round(automated / total * 100, 1) if total else 0,
+            "automated_or_partial_pct": round((automated + partial) / total * 100, 1) if total else 0,
+            "features": sorted(items, key=lambda f: f["tc_id"]),
+        }
+
+    return {
+        "status": "ok",
+        "total": len(features),
+        "generated_at_source": data.get("generated_at_source", ""),
+        "releases": releases,
+    }
+
+
 def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: str | None = None) -> list[str]:
     """Return QA team members active during the given sprint date range.
 

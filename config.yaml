@@ -136,6 +136,14 @@ snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_
 # Used by /api/flaky_tests.
 flaky_report_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/flaky_tests_report.json"
 
+# Path to amr_master_sanity_status.json built by gen_amr_master_sanity_suite_v2.py
+# (~/Downloads, not yet in a repo). The 51 TC-SAN sanity cases across the 3.4-3.7
+# releases, each with a real automation status — a curated, release-scoped
+# alternative to ADO's own Feature work item type, which is too sparse
+# (39 total Features project-wide, only 5 tagged to a release) to represent
+# release-level coverage on its own. Used by /api/release_feature_coverage.
+amr_master_sanity_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/amr_master_sanity_status.json"
+
 # Legacy iteration path → sprint label mapping for work items created before
 # 2026-02-01 in the sootballs ADO project.
 #
