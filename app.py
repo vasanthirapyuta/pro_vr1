@@ -932,14 +932,11 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         ]
         mttr = round(statistics.median(days), 1)
 
-    health = _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate)
-
     return {
         "sprint": sprint["label"],
         "pi": sprint.get("pi", ""),
         "start": sprint_start,
         "end": sprint_end,
-        "health_score": health,
         "total_user_stories": total_us,
         "completed_user_stories": completed_us,
         "completion_rate": completion_rate,
@@ -959,20 +956,6 @@ def _compute(user_stories: list[dict], bugs: list[dict], sprint: dict) -> dict:
         "defect_density": defect_density,
         "mttr_days": mttr,
     }
-
-
-def _health_score(completion_rate, bug_res_rate, unplanned_rate, carry_over_rate) -> int:
-    def score(val, thresholds, invert=False):
-        hi, med, lo = thresholds
-        if invert:
-            return 100 if val <= lo else (75 if val <= med else (50 if val <= hi else 25))
-        return 100 if val >= hi else (75 if val >= med else (50 if val >= lo else 25))
-
-    c = score(completion_rate,  (80, 60, 40))
-    b = score(bug_res_rate,     (70, 40, 20))
-    u = score(unplanned_rate,   (50, 30, 15), invert=True)
-    k = score(carry_over_rate,  (40, 25, 10), invert=True)
-    return int(0.35 * c + 0.25 * b + 0.20 * u + 0.20 * k)
 
 
 def _blank_eng(name: str) -> dict:
