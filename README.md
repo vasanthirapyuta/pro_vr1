@@ -165,8 +165,8 @@ notification, so this number always matches Slack by construction. Formula:
 `passed / (passed + failed + broken + missing) × 100` — skipped tests excluded from the denominator,
 crashed/cancelled ("missing") tests count against stability. If the most recent run has no usable
 summary, falls back to the next most recent and flags the result stale with the actual date used
-(e.g. "E2E 90.1% (Jul 26)"). This deliberately does **not** use an ADO tag-based convention that was
-originally considered for it.
+(e.g. "E2E 90.1% (Jul 26)"). This deliberately does **not** use ADO's `ci`-tag convention originally
+proposed in `TIER3_CHANGES.md` — see that doc for why.
 
 ### Release Sanity Coverage (3.4–3.7) — how it actually works
 
@@ -230,6 +230,19 @@ for the complete setup and workflow guide.
 | `CACHE_TTL` | `600` | ADO response cache TTL in seconds (CI Stability caches separately, fixed at 30 min) |
 | `PORT` | `5050` | HTTP port |
 | `FLASK_DEBUG` | `false` | Enable Flask debug mode |
+
+---
+
+## ADO Configuration Roadmap
+
+Four ADO project configuration changes were originally scoped to unlock additional KPIs. As of
+2026-07-29, one has shipped a different way — **CI Stability % is done**, built from GitHub Actions
+directly rather than the ADO `ci`-tag convention originally proposed, since that needed no ADO
+process change and measures the real thing this KPI is meant to represent. The other three
+(Estimation Slip Rate, Test Execution Hours, sprint-level test metrics) are still pending.
+
+See [TIER3_CHANGES.md](TIER3_CHANGES.md) for the full specification, current status, and approval
+checklist.
 
 ---
 

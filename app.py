@@ -396,8 +396,8 @@ def testplans():
         "migration_pending": True,
         "migration_note": (
             "Test Plans currently reside in the 'sootballs' ADO project. "
-            "Migrating to the 'AMR' project would let sprint-level automation metrics link directly "
-            "to sprint iterations — deferred for now, not an active plan."
+            "Migration to the 'AMR' project is a tracked initiative (see TIER3_CHANGES.md). "
+            "Once migrated, sprint-level automation metrics will be linked directly to sprint iterations."
         ),
     })
 
