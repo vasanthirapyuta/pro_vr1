@@ -3,17 +3,19 @@ Azure DevOps REST API client for the QA Metrics Dashboard.
 
 Filtering strategy (confirmed from live ADO data, 2026-05-11):
   - User Stories  → filter by AssignedTo (QA member is doing the testing work)
-  - Bugs          → NOT filtered by reporter/assignee (2026-07-10): bug health metrics
-                    (created-vs-resolved flow, lead time, aging) care about all bugs in
-                    the PI, not just ones QA happened to file
+  - Bugs          → NOT filtered by reporter/assignee: bug health metrics
+                    (created-vs-resolved flow, lead time, aging) care about all of this
+                    team's bugs in the PI, not just ones a QA member happened to file.
+                    Filtered instead by the `sb-bug` tag (added 2026-07-30) to scope out
+                    other teams' bugs sharing the same ADO project — confirmed live that
+                    date: 80 of 145 PI bugs carry it, the rest carry unrelated
+                    release/customer tags (e.g. `SB_3.5_bugs`) or none at all
   - Both          → OR-condition: item tagged `sb_qa` is always included regardless of assignee
   - Story points  → absent on ~75 % of items in this project; count-based metrics are primary
   - TargetDate    → universally unset; sprint end date used as implicit deadline
   - CompletedWork → universally unset; test execution hours not currently derivable
   - Severity/Priority → set on <2% of recent Bugs (verified 2026-07-10); not usable for
                     weighted metrics until the team adopts the field
-  - Tags on Bugs  → 0 of 1020 recent Bugs have any tag; no escape/regression convention
-                    exists yet — do not derive that signal from tags
 
 Test Plans live in the `sootballs` project.  The same PAT works cross-project.
 Suite-level testCaseCount returns 0 via the suites API; test cases are queried
@@ -115,9 +117,12 @@ class ADOClient:
         return result
 
     def get_bugs(self, iteration_path: str) -> list[dict]:
-        """Return ALL Bugs in the PI containing this iteration, regardless of who
-        filed or is assigned to them — bug health is a team-wide signal, not a
-        per-reporter one."""
+        """Return all Bugs in the PI containing this iteration tagged 'sb-bug',
+        regardless of who filed or is assigned to them — bug health is a
+        team-wide signal, not a per-reporter one. The sb-bug tag scopes this
+        team's bugs out of the shared ADO project (confirmed live 2026-07-30:
+        80 of 145 PI bugs carry it; the rest carry unrelated release/customer
+        tags like 'SB_3.5_bugs' or none at all)."""
         cache_key = self._make_key("bugs", iteration_path)
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -131,6 +136,7 @@ class ADOClient:
             WHERE [System.TeamProject] = '{_esc(project)}'
               AND [System.IterationPath] UNDER '{_esc(pi_path)}'
               AND [System.WorkItemType] = 'Bug'
+              AND [System.Tags] CONTAINS 'sb-bug'
             ORDER BY [System.Id]
         """
         ids = self._wiql(project, query)

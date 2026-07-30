@@ -254,7 +254,6 @@ def bugs_detail():
             "time_to_resolve": _lead_time_stats(bugs, "created", "resolved"),
             "time_to_verify": _lead_time_stats(bugs, "resolved", "closed"),
         },
-        "by_area": _bugs_by_area(bugs),
         "oldest_open": _oldest_open_bugs(bugs, limit=10),
         "items": [
             {
@@ -345,17 +344,6 @@ def _age_buckets(bugs: list[dict]) -> dict:
         key = "0-7d" if age <= 7 else "8-14d" if age <= 14 else "15-30d" if age <= 30 else "31d+"
         buckets[key] += 1
     return buckets
-
-
-def _bugs_by_area(bugs: list[dict]) -> list[dict]:
-    areas: dict[str, dict] = {}
-    for b in bugs:
-        area = (b.get("area") or "").split("\\")[-1] or "Unclassified"
-        a = areas.setdefault(area, {"area": area, "total": 0, "open": 0})
-        a["total"] += 1
-        if b["state"] not in BUG_DONE:
-            a["open"] += 1
-    return sorted(areas.values(), key=lambda x: -x["total"])
 
 
 def _oldest_open_bugs(bugs: list[dict], limit: int = 10) -> list[dict]:
