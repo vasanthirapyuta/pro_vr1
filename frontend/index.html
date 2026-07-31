@@ -736,493 +736,142 @@ function TestPlansPage() {
   );
 }
 
-// ── Feature Coverage Page ─────────────────────────────────────────────────────
+// ── Automation Page (release-wise Feature -> Suite ID -> Backend PR -> Test PR -> Status) ──
 
-function FeatureCoveragePage({ sprintLabel }) {
-  const url = '/api/feature_coverage' + (sprintLabel ? `?sprint=${encodeURIComponent(sprintLabel)}` : '');
-  const { data, loading, error } = useFetch(url);
-  const url2 = '/api/engineer_automation';
-  const { data: engData } = useFetch(url2);
-  const { data: sanity, loading: sanityLoading } = useFetch('/api/release_feature_coverage');
+const AUTOMATION_STATUS_META = {
+  automated:          { label: 'Automated',            bg: '#dcfce7', color: '#10b981' },
+  written_not_merged: { label: 'Written, Not Merged',   bg: '#fef3c7', color: '#b45309' },
+  yet_to_automate:    { label: 'Yet to Automate',       bg: '#fee2e2', color: '#dc2626' },
+  manually_verified:  { label: 'Manually Verified',     bg: '#e0e7ff', color: '#4f46e5' },
+  not_automatable:    { label: 'Not Automatable',       bg: '#e2e8f0', color: '#475569' },
+  excluded:           { label: 'Excluded',              bg: '#f1f5f9', color: '#94a3b8' },
+  unverified:         { label: 'Unverified',            bg: '#ffedd5', color: '#c2410c' },
+};
+const AUTOMATION_RELEASE_ORDER = ['3.4', '3.5', '3.6', '3.7'];
+const AUTOMATION_REPO_URLS = {
+  rr_sootballs:            'https://github.com/rapyuta-robotics/rr_sootballs/pull/',
+  sootballs_tests:         'https://github.com/rapyuta-robotics/sootballs_tests/pull/',
+  sootballs_wms_interface: 'https://github.com/rapyuta-robotics/sootballs_wms_interface/pull/',
+  rr_lbc:                  'https://github.com/rapyuta-robotics/rr_lbc/pull/',
+};
 
-  if (loading) return <Spinner />;
-  if (error)   return <ErrorNotice message={error} />;
-  if (!data)   return null;
-
-  const s = data.summary;
-  const coverageColor = s.overall_coverage_pct >= 70 ? '#10b981'
-                       : s.overall_coverage_pct >= 30 ? '#f59e0b' : '#f43f5e';
-
-  const RELEASE_ORDER = ['3.4', '3.5', '3.6', '3.7'];
-  const releaseCards = sanity && sanity.status === 'ok'
-    ? RELEASE_ORDER.filter(r => sanity.releases[r]).map(r => ({ release: r, ...sanity.releases[r] }))
-    : [];
-  const allSanityFeatures = releaseCards.flatMap(r => r.features);
-  const statusStyle = (label) => {
-    if (label === 'Automated') return { background: '#dcfce7', color: '#10b981' };
-    if (label === 'Partial')   return { background: '#fef3c7', color: '#b45309' };
-    if (label === 'Doc Mismatch') return { background: '#e2e8f0', color: '#475569' };
-    return { background: '#fee2e2', color: '#dc2626' }; // Gap, Held, Scaffolded
-  };
-
+function StatusBadge({ status }) {
+  const meta = AUTOMATION_STATUS_META[status] || AUTOMATION_STATUS_META.unverified;
   return (
-    <div className="page">
+    <span className="badge" style={{ background: meta.bg, color: meta.color, fontSize: 11, whiteSpace: 'nowrap' }}>
+      {meta.label}
+    </span>
+  );
+}
+
+function PRList({ value }) {
+  if (!value) return <span className="td-muted">—</span>;
+  const parts = value.split(',').map(s => s.trim());
+  return parts.map((part, i) => {
+    const m = part.match(/^(\w+)#(\d+)$/);
+    const url = m && AUTOMATION_REPO_URLS[m[1]];
+    return (
+      <React.Fragment key={i}>
+        {i > 0 && ', '}
+        {url
+          ? <a href={url + m[2]} target="_blank" rel="noreferrer" style={{ color: 'var(--indigo)', textDecoration: 'none' }}>{part}</a>
+          : part}
+      </React.Fragment>
+    );
+  });
+}
+
+function AutomationReleaseSection({ release, data }) {
+  const pctColor = data.automation_pct >= 60 ? '#10b981' : data.automation_pct >= 30 ? '#f59e0b' : '#f43f5e';
+  return (
+    <div style={{ marginBottom: 32 }}>
       <div className="section-title">
-        Release Sanity Coverage (3.4 – 3.7)
-        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>
-          AMR Master Sanity · {sanity && sanity.status === 'ok' ? sanity.total : '…'} TC-SAN cases
-        </span>
+        Release {release}
+        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>{data.tag_range}</span>
       </div>
-      {sanityLoading ? <Spinner /> : sanity && sanity.status === 'ok' ? (
-        <>
-          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))' }}>
-            {releaseCards.map(r => (
-              <KPICard
-                key={r.release}
-                label={`Release ${r.release}`}
-                value={r.automation_pct} unit="%"
-                sub={`${r.automated} automated + ${r.partial} partial + ${r.gap} gap${r.doc_mismatch ? ` + ${r.doc_mismatch} doc-mismatch` : ''} of ${r.total} (${r.automated_or_partial_pct}% has some automation)`}
-              />
-            ))}
-          </div>
-          <div className="table-wrap" style={{ marginTop: 16 }}>
-            <table>
-              <thead>
-                <tr><th>TC-SAN</th><th>Release</th><th>Feature</th><th>Ref</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {allSanityFeatures.map(f => (
-                  <tr key={f.tc_id}>
-                    <td className="td-muted">{f.tc_id}</td>
-                    <td>{f.release}</td>
-                    <td style={{ maxWidth: 380 }}>{f.title}</td>
-                    <td className="td-muted">{f.proj_ref}</td>
-                    <td>
-                      <span className="badge" style={{ ...statusStyle(f.status_label), fontSize: 11 }} title={f.note || ''}>
-                        {f.status_label}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      ) : (
-        <div className="notice notice-slate">
-          <span className="notice-icon">ℹ</span>
-          <div>Release sanity coverage unavailable: <code>{sanity ? sanity.status : 'loading'}</code>. Needs amr_master_sanity_file configured and gen_amr_master_sanity_suite_v2.py run at least once.</div>
-        </div>
-      )}
-
-      <div className="section-title" style={{ marginTop: 32 }}>
-        Feature Coverage — Automation Traceability
-        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>
-          Feature → TC → Automated
-        </span>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', marginBottom: 16 }}>
+        <KPICard label="Automation Rate" value={data.automation_pct} unit="%" sub={`${data.automated} of ${data.counted} counted features`} />
+        <KPICard label="Automated" value={data.automated} sub="merged, real tests" />
+        <KPICard label="Yet to Automate" value={data.yet_to_automate} lowerBetter sub="real gap" />
+        <KPICard label="Written, Not Merged" value={data.written_not_merged} lowerBetter sub="PR open/closed unmerged" />
+        <KPICard label="Manually Verified" value={data.manually_verified} sub="confirmed, no automation" />
+        <KPICard label="Not Automatable" value={data.not_automatable} sub="hardware/sim-limit only" />
       </div>
-
-      {/* Summary KPI row */}
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: coverageColor }}>
-            {s.overall_coverage_pct}%
-          </div>
-          <div className="kpi-label">Overall TC Coverage</div>
-          <div className="kpi-sub">{s.automated_tcs} / {s.total_tcs} TCs automated</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: '#10b981' }}>{s.fully_covered}</div>
-          <div className="kpi-label">Fully Covered</div>
-          <div className="kpi-sub">100% TCs automated</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: '#f59e0b' }}>{s.partially_covered}</div>
-          <div className="kpi-label">Partially Covered</div>
-          <div className="kpi-sub">Some TCs missing</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: '#94a3b8' }}>{s.no_tcs_linked}</div>
-          <div className="kpi-label">No TCs Linked</div>
-          <div className="kpi-sub">Need Tested By relation</div>
-        </div>
-      </div>
-
-      {/* Per-Feature table */}
-      <div className="section-title" style={{ marginTop: 24 }}>Per-Feature Breakdown</div>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>ID</th><th>Feature / Story</th><th>Assignee</th><th>State</th>
-              <th style={{ textAlign: 'right' }}>Total TCs</th>
-              <th style={{ textAlign: 'right' }}>Automated</th>
-              <th style={{ textAlign: 'right' }}>Coverage</th>
-              <th>Progress</th>
+              <th>Feature</th><th>Suite ID</th><th>Backend PR</th><th>Test PR</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {(data.items || []).map(f => {
-              const pct = f.coverage_pct;
-              const barColor = pct === 100 ? '#10b981' : pct > 0 ? '#f59e0b' : '#e2e8f0';
-              const textColor = pct === 100 ? '#10b981' : pct > 0 ? '#f59e0b' : '#94a3b8';
-              return (
-                <tr key={f.id}>
-                  <td>
-                    <a
-                      href={`https://dev.azure.com/rapyuta-robotics/AMR/_workitems/edit/${f.id}`}
-                      target="_blank" rel="noreferrer"
-                      style={{ color: 'var(--indigo)', textDecoration: 'none' }}
-                    >
-                      {f.id}
-                    </a>
-                  </td>
-                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.title}
-                  </td>
-                  <td>{(f.assignee || '—').split(' ')[0]}</td>
-                  <td><span className="badge" style={{ background: '#e2e8f0', color: '#475569', fontSize: 11 }}>{f.state}</span></td>
-                  <td style={{ textAlign: 'right' }}>{f.total_tcs || '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{f.total_tcs ? f.automated_tcs : '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: textColor }}>
-                    {f.total_tcs ? `${pct}%` : 'No TCs'}
-                  </td>
-                  <td style={{ width: 120 }}>
-                    {f.total_tcs > 0 && (
-                      <div style={{ background: '#e2e8f0', borderRadius: 4, height: 8, width: '100%' }}>
-                        <div style={{ background: barColor, borderRadius: 4, height: 8, width: `${pct}%` }} />
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {(!data.items || data.items.length === 0) && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>
-                No Features found for this sprint. Add <code>qa_team_members</code> to config.yaml
-                and ensure Features are tagged or assigned to QA members.
-              </td></tr>
-            )}
+            {data.features.map((f, i) => (
+              <tr key={i}>
+                <td style={{ maxWidth: 340 }} title={f.note || ''}>{f.feature}</td>
+                <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{f.suite_id || '—'}</td>
+                <td><PRList value={f.backend_pr} /></td>
+                <td><PRList value={f.test_pr} /></td>
+                <td><StatusBadge status={f.status} /></td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
-
-      {/* Engineer automation attribution */}
-      {engData && engData.engineers && engData.engineers.length > 0 && (
-        <>
-          <div className="section-title" style={{ marginTop: 32 }}>
-            Automation Attribution — by Engineer
-            <span className="badge badge-tier2" style={{ marginLeft: 8 }}>from github_pr in YAML</span>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Engineer (GitHub)</th>
-                  <th style={{ textAlign: 'right' }}>TCs Automated</th>
-                  <th>PRs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {engData.engineers.map(e => (
-                  <tr key={e.engineer}>
-                    <td>{e.engineer}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{e.tcs_automated}</td>
-                    <td style={{ color: 'var(--muted)', fontSize: 12 }}>
-                      {(e.prs || []).map(pr => `#${pr}`).join(', ') || '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-            Attribution is based on the <code>github_pr</code> field in <code>ado_test_mapping.yaml</code>.
-            Fill this field (auto-filled by CI on merge) to see complete attribution.
-          </div>
-        </>
-      )}
     </div>
   );
 }
 
-// ── Automation Coverage Page ──────────────────────────────────────────────────
-
 function AutomationPage() {
-  const { data, loading, error } = useFetch('/api/automation_coverage');
-  const { data: sbQa, loading: sbQaLoading } = useFetch('/api/sb_qa_coverage');
+  const { data, loading, error } = useFetch('/api/release_automation');
 
   if (loading) return <Spinner />;
   if (error)   return <ErrorNotice message={error} />;
   if (!data)   return null;
 
-  const s = data.summary;
-  const pctColor = s.pct_automated_in_ado >= 50 ? '#10b981'
-                 : s.pct_automated_in_ado >= 20 ? '#f59e0b' : '#f43f5e';
+  if (data.status !== 'ok') {
+    return (
+      <div className="page">
+        <div className="notice notice-slate">
+          <span className="notice-icon">ℹ</span>
+          <div>
+            Release automation data unavailable: <code>{data.status}</code>. Set{' '}
+            <code>release_automation_file</code> in <code>config.yaml</code> to the path of{' '}
+            <code>qa_tooling/release_automation_status.yaml</code> from the sootballs_tests repo.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const gaugeOption = {
-    series: [{
-      type: 'gauge', startAngle: 200, endAngle: -20, min: 0, max: 100,
-      radius: '90%', pointer: { show: false },
-      progress: { show: true, width: 20, itemStyle: { color: pctColor } },
-      axisLine: { lineStyle: { width: 20, color: [[1, '#e2e8f0']] } },
-      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      detail: {
-        valueAnimation: true, fontSize: 36, fontWeight: 700, color: pctColor,
-        formatter: '{value}%', offsetCenter: [0, '10%'],
-      },
-      title: { fontSize: 13, color: '#64748b', offsetCenter: [0, '38%'] },
-      data: [{ value: s.pct_automated_in_ado, name: 'Automated' }],
-    }],
-  };
-
-  const wiStateEntries = Object.entries(s.amr_wi_state_breakdown || {});
-  const wiStateOption = wiStateEntries.length ? {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 12 } },
-    series: [{
-      type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'],
-      label: { show: false },
-      data: wiStateEntries.map(([name, value]) => ({
-        name, value,
-        itemStyle: {
-          color: ['Closed','Done','Completed'].includes(name) ? '#10b981'
-               : name === 'Active' ? '#6366f1'
-               : name === 'In Progress' ? '#8b5cf6'
-               : name === 'New' ? '#94a3b8' : '#f59e0b',
-        },
-      })),
-    }],
-  } : null;
+  const t = data.totals;
+  const releases = AUTOMATION_RELEASE_ORDER.filter(r => data.releases[r]);
 
   return (
     <div className="page">
-      <div className="section-title">Automation Coverage — sootballs\qa Test Cases</div>
-
-      <div className="kpi-grid">
-        <KPICard label="Automation Rate (raw TCs)" value={s.pct_automated_in_ado} unit="%"
-          sub={`${s.automated_in_ado} of ${s.total_tcs_in_ado} TCs in ADO (sootballs\\qa)`} />
-        <KPICard label="Automation Rate (distinct scenarios)" value={s.distinct_scenario_automation_rate} unit="%"
-          sub={`${s.distinct_scenarios_automated} of ${s.distinct_scenarios} scenarios, parametrized variants de-duplicated`} />
-        <KPICard label="Automated TCs" value={s.automated_in_ado}
-          sub="AutomationStatus = Automated" />
-        <KPICard label="Confirmed in Mapping" value={s.confirmed_in_mapping}
-          sub={`${s.todo_in_mapping} TODO entries need tc_id lookup`} />
-        <KPICard label="Pending ADO Apply" value={s.pending_link_to_ado} lowerBetter
-          sub="confirmed in YAML · not yet run --apply" />
-        <KPICard label="AMR WIs (sb_qa)" value={s.amr_wis_total}
-          sub={`${s.amr_wis_with_linked_tcs} linked to confirmed TCs`} />
+      <div className="section-title">
+        Automation Coverage — Release-wise (3.4 – 3.7)
+        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>Feature → Suite ID → Backend PR → Test PR</span>
+      </div>
+      <div className="kpi-grid" style={{ marginBottom: 28 }}>
+        <KPICard label="Overall Automation Rate" value={t.automation_pct} unit="%" sub={`${t.automated} of ${t.counted} counted features, across 3.4-3.7`} />
+        <KPICard label="Yet to Automate" value={t.yet_to_automate} lowerBetter sub="real gaps" />
+        <KPICard label="Written, Not Merged" value={t.written_not_merged} lowerBetter sub="PR open/closed unmerged" />
+        <KPICard label="Manually Verified" value={t.manually_verified} sub="confirmed, no automation" />
+        <KPICard label="Not Automatable" value={t.not_automatable} sub="hardware/sim-limit only" />
+        <KPICard label="Unverified" value={t.unverified} lowerBetter sub="no conclusive evidence either way" />
       </div>
 
-      <div className="chart-row chart-row-2">
-        <div className="chart-card">
-          <div className="chart-card-title">
-            Automation Rate <span className="badge badge-tier2">Live ADO · sootballs</span>
-          </div>
-          <EChart option={gaugeOption} height={230} />
-          <div style={{ textAlign:'center', fontSize:12, color:'var(--muted)', marginTop:6 }}>
-            {s.confirmed_in_mapping} functions confirmed in mapping ·&nbsp;
-            {s.todo_in_mapping} TODO (tc_id pending)
-          </div>
-        </div>
-        {wiStateOption ? (
-          <div className="chart-card">
-            <div className="chart-card-title">
-              AMR WI State Breakdown <span className="badge badge-tier2">sb_qa tag · AMR project</span>
-            </div>
-            <EChart option={wiStateOption} height={230} />
-          </div>
-        ) : (
-          <div className="chart-card">
-            <div className="chart-card-title">AMR WI State Breakdown</div>
-            <div style={{ padding:'40px 0', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
-              No AMR Work Items tagged <code>sb_qa</code> found.
-            </div>
-          </div>
-        )}
-      </div>
+      {releases.map(r => (
+        <AutomationReleaseSection key={r} release={r} data={data.releases[r]} />
+      ))}
 
-      {data.by_plan.length > 0 && (
-        <>
-          <div className="section-title" style={{ marginTop:4 }}>Per-Plan Automation Progress</div>
-          <div className="chart-card" style={{ marginBottom:24 }}>
-            {data.by_plan.map(p => {
-              const pct = p.confirmed_tcs > 0
-                ? Math.round(p.automated_in_ado / p.confirmed_tcs * 100) : 0;
-              const barColor = pct === 100 ? 'var(--emerald)'
-                             : pct >= 50 ? 'var(--amber)' : 'var(--rose)';
-              return (
-                <div key={p.plan_id} style={{ marginBottom:18 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:13 }}>
-                    <span style={{ fontWeight:500 }}>
-                      {p.plan_name}
-                      <a href={`https://dev.azure.com/rapyuta-robotics/sootballs/_testManagement/define?planId=${p.plan_id}`}
-                        target="_blank" rel="noreferrer"
-                        style={{ marginLeft:6, fontSize:11, color:'var(--indigo)', textDecoration:'none' }}>
-                        ↗
-                      </a>
-                    </span>
-                    <span style={{ color:'var(--muted)', fontSize:12 }}>
-                      {p.automated_in_ado} / {p.confirmed_tcs} automated · {pct}%
-                    </span>
-                  </div>
-                  <div style={{ height:8, background:'#e2e8f0', borderRadius:4, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${pct}%`, background:barColor,
-                                  borderRadius:4, transition:'width .5s' }} />
-                  </div>
-                  {p.pending_link > 0 && (
-                    <div style={{ fontSize:11, color:'var(--amber)', marginTop:3 }}>
-                      ⚠ {p.pending_link} TC{p.pending_link !== 1 ? 's' : ''} in YAML but
-                      &nbsp;--apply not yet run
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {data.amr_wis.length > 0 && (
-        <>
-          <div className="section-title">AMR Work Items — Automation Backlog (sb_qa tag)</div>
-          <div className="chart-card" style={{ marginBottom:24 }}>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>WI #</th><th>Title</th><th>State</th>
-                    <th>Assignee</th><th>Sprint</th>
-                    <th>Linked TCs</th><th>All Automated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.amr_wis.map(w => {
-                    const done = ['Closed','Done','Completed'].includes(w.state);
-                    const stCls = done ? 'td-good'
-                                : ['Active','In Progress'].includes(w.state) ? 'td-warn'
-                                : 'td-muted';
-                    const sprint = w.iteration ? w.iteration.split('\\').pop() : '—';
-                    return (
-                      <tr key={w.id}>
-                        <td>
-                          <a href={`https://dev.azure.com/rapyuta-robotics/AMR/_workitems/edit/${w.id}`}
-                             target="_blank" rel="noreferrer"
-                             style={{ color:'var(--indigo)', textDecoration:'none', fontWeight:600 }}>
-                            {w.id}
-                          </a>
-                        </td>
-                        <td style={{ maxWidth:300 }}>{w.title}</td>
-                        <td className={stCls}>{w.state}</td>
-                        <td className="td-muted">{w.assignee || '—'}</td>
-                        <td className="td-muted">{sprint}</td>
-                        <td>
-                          {w.linked_count > 0
-                            ? <span style={{ color:'var(--indigo)', fontWeight:600 }}>
-                                {w.linked_count}
-                              </span>
-                            : <span className="td-muted">—</span>}
-                        </td>
-                        <td>
-                          {w.linked_count === 0
-                            ? <span className="td-muted">—</span>
-                            : w.all_automated
-                              ? <span className="td-good">✓ Yes</span>
-                              : <span className="td-warn">⏳ Partial</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {data.mapping_error && (
-        <div className="notice notice-amber">
-          <span className="notice-icon">⚠️</span>
-          <div>
-            <strong>Mapping file error.</strong> The file at <code>{data.mapping_file}</code> could
-            not be loaded or has an unexpected schema. Check the server log for details.
-          </div>
-        </div>
-      )}
-      {!data.mapping_loaded && !data.mapping_error && (
-        <div className="notice notice-amber">
-          <span className="notice-icon">⚠️</span>
-          <div>
-            <strong>Mapping file not configured.</strong> Set <code>sootballs_mapping_file</code> in
-            &nbsp;<code>config.yaml</code> (or <code>MAPPING_FILE</code> env var) to the path of
-            &nbsp;<code>qa_tooling/ado_test_mapping.yaml</code> from the sootballs_tests repo.
-            Per-plan progress bars and WI cross-linking require this file.
-          </div>
-        </div>
-      )}
-
-      <div className="section-title" style={{ marginTop:4 }}>sb_qa PR Coverage (GitHub)</div>
-      {sbQaLoading ? <Spinner /> : sbQa && sbQa.status === 'ok' ? (
-        <>
-          <div className="kpi-grid">
-            <KPICard label="sb_qa PRs" value={sbQa.total_sb_qa_prs}
-              sub="new test automation / feature coverage PRs (GitHub label)" />
-            <KPICard label="Linked to ADO" value={sbQa.link_rate_pct} unit="%"
-              sub={`${sbQa.linked_count} of ${sbQa.total_sb_qa_prs} have an AB# link`} />
-            <KPICard label="In Mapping File" value={sbQa.mapping_coverage_pct} unit="%" lowerBetter
-              sub={`${sbQa.in_mapping_count} of ${sbQa.total_sb_qa_prs} tracked in ado_test_mapping.yaml`} />
-          </div>
-          {sbQa.missing_from_mapping.length > 0 && (
-            <div className="chart-card" style={{ marginBottom:24 }}>
-              <div className="chart-card-title">
-                sb_qa PRs Missing from Mapping File
-                <span className="badge badge-tier2">{sbQa.missing_from_mapping.length} to backfill</span>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>PR #</th><th>Title</th><th>Merged</th><th>ADO WI</th></tr>
-                  </thead>
-                  <tbody>
-                    {sbQa.missing_from_mapping.slice(0, 30).map(p => (
-                      <tr key={p.number}>
-                        <td>
-                          <a href={p.url} target="_blank" rel="noreferrer"
-                             style={{ color:'var(--indigo)', textDecoration:'none', fontWeight:600 }}>
-                            #{p.number}
-                          </a>
-                        </td>
-                        <td style={{ maxWidth:340 }}>{p.title}</td>
-                        <td className="td-muted">{p.merged_at || '—'}</td>
-                        <td className="td-muted">
-                          {p.ado_wi_ids.length > 0 ? p.ado_wi_ids.join(', ') : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
-      ) : sbQa && sbQa.status !== 'ok' ? (
-        <div className="notice notice-slate">
-          <span className="notice-icon">ℹ</span>
-          <div>sb_qa PR coverage unavailable: <code>{sbQa.status}</code>. Needs a snapshot built from <code>build_snapshot.py</code> on or after 2026-07-11 (labels weren't captured before that).</div>
-        </div>
-      ) : null}
-
-      <div className="notice notice-slate" style={{ marginTop:16 }}>
+      <div className="notice notice-slate">
         <span className="notice-icon">ℹ</span>
         <div>
-          <strong>How this dashboard stays up-to-date automatically:</strong>
-          <ol style={{ marginTop:6, paddingLeft:16, lineHeight:1.8, fontSize:12 }}>
-            <li>QA engineer adds/confirms a mapping in <code>qa_tooling/ado_test_mapping.yaml</code></li>
-            <li>PR merged to <code>devel</code> → GitHub Action <em>Link ADO Test Cases on merge</em> fires</li>
-            <li>Action runs <code>link_ado_tests.py --apply --link-wis</code></li>
-            <li>ADO TC flips to <strong>Automated</strong> · AMR WI gets cross-project link + comment</li>
-            <li>Click ↺ above to refresh — numbers update immediately</li>
-          </ol>
+          Built from git tag-range commit analysis across rr_sootballs, sootballs_wms_interface, and rr_lbc,
+          cross-referenced with ADO Test Plans/Suites and verified against real (non-skipped) test file content,
+          with Slack search resolving any gaps left open. "Excluded" rows (not an actual new feature for that
+          release) are shown for transparency but excluded from automation-rate denominators.
         </div>
       </div>
     </div>
@@ -1272,7 +921,6 @@ function App() {
     { id: 'engineers',   label: '👤 Per Engineer'     },
     { id: 'testplans',   label: '🧪 Test Plans'       },
     { id: 'automation',  label: '🤖 Automation'       },
-    { id: 'features',    label: '🎯 Feature Coverage' },
   ];
 
   const pageEl = (() => {
@@ -1284,7 +932,6 @@ function App() {
       case 'engineers':  return <EngineerPage key={key} sprintLabel={sprintLabel} />;
       case 'testplans':  return <TestPlansPage key={key} />;
       case 'automation': return <AutomationPage key={key} />;
-      case 'features':   return <FeatureCoveragePage key={key} sprintLabel={sprintLabel} />;
       default:           return null;
     }
   })();

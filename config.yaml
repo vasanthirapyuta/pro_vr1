@@ -110,14 +110,6 @@ qa_team_members:
 
 qa_tag: "sb_qa"   # Items with this ADO tag are always included regardless of assignee
 
-# Absolute path to qa_tooling/ado_test_mapping.yaml in the sootballs_tests repo.
-# Used by /api/automation_coverage to join pytest ↔ ADO TC ↔ AMR WI data.
-# Set to null to disable mapping-file enrichment (live ADO stats still shown).
-# Override at runtime via the MAPPING_FILE environment variable.
-# Example (set in a local config override, do not commit user-specific paths):
-#   sootballs_mapping_file: "/home/youruser/path/to/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
-sootballs_mapping_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/ado_test_mapping.yaml"
-
 # Path to feature_coverage_cache.json produced by traverse_feature_coverage.py.
 # Set to null to disable /api/feature_coverage_v2 (endpoint returns empty cache message).
 # Override at runtime via the COVERAGE_CACHE_FILE environment variable.
@@ -126,22 +118,20 @@ sootballs_mapping_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_to
 feature_coverage_cache_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/feature_coverage_cache.json"
 
 # Path to qa_snapshot_YYYY_MM_DD.json built by build_snapshot.py.
-# Used by /api/ci_fix_coverage, /api/test_area_breakdown, and /api/sb_qa_coverage.
-# Snapshots before 2026-07-11 don't have PR "labels" captured — sb_qa_coverage
-# needs this one or later.
+# Used by /api/ci_fix_coverage and /api/test_area_breakdown.
 snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_snapshot_2026_07_11.json"
 
 # Path to flaky_tests_report.json built by scan_flaky_tests.py.
 # Used by /api/flaky_tests.
 flaky_report_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/flaky_tests_report.json"
 
-# Path to amr_master_sanity_status.json built by gen_amr_master_sanity_suite_v2.py
-# (~/Downloads, not yet in a repo). The 51 TC-SAN sanity cases across the 3.4-3.7
-# releases, each with a real automation status — a curated, release-scoped
-# alternative to ADO's own Feature work item type, which is too sparse
-# (39 total Features project-wide, only 5 tagged to a release) to represent
-# release-level coverage on its own. Used by /api/release_feature_coverage.
-amr_master_sanity_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/amr_master_sanity_status.json"
+# Path to release_automation_status.yaml — the release-wise (3.4-3.7) feature
+# automation master table (Feature -> ADO Suite ID -> Backend PR -> Test PR ->
+# Status), built from git tag-range commit analysis across rr_sootballs /
+# sootballs_wms_interface / rr_lbc, ADO Test Plan/Suite cross-reference, and
+# Slack verification. Used by /api/release_automation, the dashboard's
+# consolidated Automation tab.
+release_automation_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/release_automation_status.yaml"
 
 # Legacy iteration path → sprint label mapping for work items created before
 # 2026-02-01 in the sootballs ADO project.

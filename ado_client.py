@@ -129,8 +129,7 @@ class ADOClient:
             return cached
 
         # All bugs live in the AMR project now (migrated from sootballs) —
-        # unlike get_user_stories/get_feature_coverage, no sootballs-project
-        # routing branch applies here.
+        # unlike get_user_stories, no sootballs-project routing branch applies here.
         project = self.project
         pi_path = "\\".join(iteration_path.split("\\")[:2])
         query = f"""
@@ -163,291 +162,6 @@ class ADOClient:
     def get_test_plans(self) -> list[dict]:
         url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/testplan/plans"
         return self._cached_get(url, {"api-version": _API_VERSION}).get("value", [])
-
-    def get_test_case_summary(self) -> dict:
-        """
-        Count test cases owned by this QA team (AreaPath 'sootballs\\qa') by
-        AutomationStatus via WIQL, plus a de-duplicated "distinct scenario"
-        count alongside the raw total.
-
-        Two corrections vs. the original version of this function, both
-        found by checking real ADO data rather than assuming the naive
-        query was representative:
-          1. No AreaPath filter meant this counted ~5,092 Test Cases
-             project-wide, but 48% of those (2,433) belong to two other
-             teams entirely ("Io Infra QA Squad", "io-amr-si") sharing the
-             same ADO project — confirmed zero overlap with any of this
-             team's own automation-mapping-tracked test cases. Scoping to
-             AreaPath UNDER 'sootballs\\qa' fixes that.
-          2. A hardcoded 1000-item cap meant even the un-scoped total was
-             never actually a real total — just the first 1000 (oldest,
-             lowest-ID) test cases, silently unrepresentative of the whole
-             set. Removed; the qa-scoped set (~2,100) is cheap enough to
-             fetch in full.
-
-        Many test scenarios exist in ADO as several near-duplicate Test
-        Case work items — one per parametrized variant — rather than ADO's
-        native per-case parameters. distinct_scenarios groups by title with
-        common parametrize-style suffixes stripped (trailing "- Case N",
-        "(N)", "[...]"), so both the raw TC count and the de-duplicated
-        scenario count are reported, not just one or the other.
-
-        Suite-level API returns 0 because cases are linked at plan level;
-        WIQL on WorkItemType='Test Case' is the reliable path.
-        """
-        cache_key = self._make_key("tc_summary", self.testplans_project)
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/wiql"
-            resp = self._session.post(
-                url,
-                json={"query": (
-                    "SELECT [System.Id] FROM WorkItems "
-                    "WHERE [System.WorkItemType] = 'Test Case' "
-                    "AND [System.AreaPath] UNDER 'sootballs\\qa' "
-                    "ORDER BY [System.Id]"
-                )},
-                params={"api-version": _API_VERSION},
-                timeout=30,
-            )
-            if not resp.ok:
-                logger.warning("test case WIQL failed: %s", resp.status_code)
-                return {"total": 0, "automated": 0, "not_automated": 0, "error": resp.status_code}
-
-            ids = [w["id"] for w in resp.json().get("workItems", [])]
-            if not ids:
-                return {"total": 0, "automated": 0, "not_automated": 0}
-
-            automated = 0
-            scenario_status: dict[str, bool] = {}  # base title -> any variant automated?
-            for chunk_start in range(0, len(ids), _BATCH_SIZE):
-                chunk = ids[chunk_start:chunk_start + _BATCH_SIZE]
-                batch_url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
-                batch_resp = self._session.post(
-                    batch_url,
-                    json={"ids": chunk, "fields": ["System.Title", "Microsoft.VSTS.TCM.AutomationStatus"]},
-                    params={"api-version": _API_VERSION},
-                    timeout=30,
-                )
-                if not batch_resp.ok:
-                    continue
-                for item in batch_resp.json().get("value", []):
-                    f = item["fields"]
-                    is_automated = f.get("Microsoft.VSTS.TCM.AutomationStatus") == "Automated"
-                    if is_automated:
-                        automated += 1
-                    base = _strip_parametrize_suffix(f.get("System.Title", ""))
-                    scenario_status[base] = scenario_status.get(base, False) or is_automated
-
-            total = len(ids)
-            not_automated = total - automated
-            distinct_total = len(scenario_status)
-            distinct_automated = sum(1 for v in scenario_status.values() if v)
-
-            result = {
-                "total": total,
-                "automated": automated,
-                "not_automated": not_automated,
-                "automation_rate": round(automated / total * 100, 1) if total else 0,
-                "distinct_scenarios": distinct_total,
-                "distinct_scenarios_automated": distinct_automated,
-                "distinct_scenario_automation_rate": (
-                    round(distinct_automated / distinct_total * 100, 1) if distinct_total else 0
-                ),
-                "area_path": "sootballs\\qa",
-            }
-            self._set_cached(cache_key, result)
-            return result
-        except Exception:
-            logger.exception("Failed to fetch test case summary")
-            return {"total": 0, "automated": 0, "not_automated": 0, "error": "fetch failed"}
-
-    def get_amr_automation_wis(self, qa_tag: str = "sb_qa") -> list[dict]:
-        """Return all AMR Work Items tagged with qa_tag (default: sb_qa).
-
-        These represent automation tasks — the demand side of the coverage gap.
-        """
-        cache_key = self._make_key("amr_automation_wis", qa_tag)
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            return cached
-
-        query = f"""
-            SELECT [System.Id] FROM WorkItems
-            WHERE [System.TeamProject] = '{_esc(self.project)}'
-              AND [System.Tags] CONTAINS '{_esc(qa_tag)}'
-            ORDER BY [System.ChangedDate] DESC
-        """
-        try:
-            ids = self._wiql(self.project, query)
-        except Exception:
-            logger.exception("Failed WIQL for AMR automation WIs")
-            return []
-
-        if not ids:
-            self._set_cached(cache_key, [])
-            return []
-
-        fields = [
-            "System.Id", "System.Title", "System.State",
-            "System.WorkItemType", "System.AssignedTo", "System.CreatedDate",
-            "System.ChangedDate", "System.Tags", "System.IterationPath",
-        ]
-        items = self._batch_fetch(self.project, ids, fields)
-        result = [self._normalise(item) for item in items]
-        self._set_cached(cache_key, result)
-        return result
-
-    def get_automation_coverage(self, mapping_file: str | None = None) -> dict:
-        """Combine ado_test_mapping.yaml + live ADO TC status + AMR WIs (sb_qa tag).
-
-        Returns a coverage report structured for the dashboard Automation tab:
-          summary      — headline numbers (% automated, mapping stats, WI counts)
-          by_plan      — per test-plan breakdown with progress metrics
-          amr_wis      — AMR work items tagged sb_qa with linked TC counts
-        """
-        cache_key = self._make_key("automation_coverage", mapping_file or "")
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            return cached
-
-        # 1. Load mapping YAML — None means file present but malformed
-        mapping_result = _load_mapping(mapping_file)
-        if not mapping_file:
-            mappings, mapping_loaded, mapping_error = [], False, False
-        elif mapping_result is None:
-            mappings, mapping_loaded, mapping_error = [], False, True
-        else:
-            mappings, mapping_loaded, mapping_error = mapping_result, True, False
-        confirmed = [m for m in mappings if not _is_mapping_placeholder(m)]
-
-        # 2. Live TC automation status for confirmed tc_ids
-        tc_ids = list({m["tc_id"] for m in confirmed})
-        tc_details: dict[int, dict] = {}
-        if tc_ids:
-            try:
-                url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
-                resp = self._session.post(
-                    url,
-                    json={
-                        "ids": tc_ids,
-                        "fields": [
-                            "System.Id", "System.Title",
-                            "Microsoft.VSTS.TCM.AutomationStatus",
-                            "Microsoft.VSTS.TCM.AutomatedTestName",
-                        ],
-                    },
-                    params={"api-version": _API_VERSION},
-                    timeout=30,
-                )
-                if resp.ok:
-                    for item in resp.json().get("value", []):
-                        f = item["fields"]
-                        tc_details[f["System.Id"]] = {
-                            "title":       f.get("System.Title", ""),
-                            "status":      f.get("Microsoft.VSTS.TCM.AutomationStatus", "Not Automated"),
-                            "linked_test": f.get("Microsoft.VSTS.TCM.AutomatedTestName", ""),
-                        }
-            except Exception:
-                logger.exception("Failed to fetch TC details for automation coverage")
-
-        # 3. Overall TC summary (all TCs in sootballs, capped at 1 000 for speed)
-        tc_summary = self.get_test_case_summary()
-
-        # 4. AMR WIs with sb_qa tag
-        amr_wis = self.get_amr_automation_wis()
-
-        # 5. Group confirmed mappings by plan
-        plan_map: dict[int | None, dict] = {}
-        for m in confirmed:
-            pid = m["plan_id"]
-            if pid not in plan_map:
-                plan_map[pid] = {
-                    "plan_id": pid, "confirmed_tcs": 0,
-                    "automated_in_ado": 0, "tc_ids": [], "amr_wi_ids": [],
-                }
-            p = plan_map[pid]
-            p["confirmed_tcs"] += 1
-            p["tc_ids"].append(m["tc_id"])
-            if m.get("amr_wi_id"):
-                p["amr_wi_ids"].append(m["amr_wi_id"])
-            if tc_details.get(m["tc_id"], {}).get("status") == "Automated":
-                p["automated_in_ado"] += 1
-
-        # 6. Resolve plan names from test plans API
-        try:
-            plan_names = {p["id"]: p["name"] for p in self.get_test_plans()}
-        except Exception:
-            plan_names = {}
-
-        by_plan = [
-            {
-                "plan_id": pid,
-                "plan_name": "Unmapped (no Test Plan linked)" if pid is None else plan_names.get(pid, f"Plan {pid}"),
-                "confirmed_tcs": p["confirmed_tcs"],
-                "automated_in_ado": p["automated_in_ado"],
-                "pending_link": p["confirmed_tcs"] - p["automated_in_ado"],
-                "amr_wi_ids": p["amr_wi_ids"],
-            }
-            # Some confirmed mappings have plan_id: null (tc_id/pytest_method/amr_wi_id
-            # filled in but never linked to a Test Plan) — sort them last instead of
-            # crashing on None-vs-int comparison.
-            for pid, p in sorted(plan_map.items(), key=lambda kv: (kv[0] is None, kv[0] or 0))
-        ]
-
-        # 7. Enrich AMR WIs with linked TC info
-        wi_to_tcs: dict[int, list[int]] = {}
-        for m in confirmed:
-            wi_id = m.get("amr_wi_id")
-            if wi_id:
-                wi_to_tcs.setdefault(wi_id, []).append(m["tc_id"])
-
-        amr_wi_rows = []
-        for w in amr_wis:
-            linked = wi_to_tcs.get(w["id"], [])
-            amr_wi_rows.append({
-                **w,
-                "linked_tc_ids": linked,
-                "linked_count": len(linked),
-                "all_automated": all(
-                    tc_details.get(tc, {}).get("status") == "Automated"
-                    for tc in linked
-                ) if linked else False,
-            })
-
-        # 8. Summary stats
-        automated_confirmed = sum(
-            1 for m in confirmed
-            if tc_details.get(m["tc_id"], {}).get("status") == "Automated"
-        )
-        from collections import Counter
-        wi_states = dict(Counter(w["state"] for w in amr_wis).most_common())
-
-        result = {
-            "mapping_loaded": mapping_loaded,
-            "mapping_error":  mapping_error,
-            "summary": {
-                "total_tcs_in_ado":        tc_summary["total"],
-                "automated_in_ado":        tc_summary["automated"],
-                "pct_automated_in_ado":    tc_summary.get("automation_rate", 0),
-                "distinct_scenarios":               tc_summary.get("distinct_scenarios", 0),
-                "distinct_scenarios_automated":      tc_summary.get("distinct_scenarios_automated", 0),
-                "distinct_scenario_automation_rate": tc_summary.get("distinct_scenario_automation_rate", 0),
-                "confirmed_in_mapping":    len(confirmed),
-                "todo_in_mapping":         len(mappings) - len(confirmed),
-                "pending_link_to_ado":     len(confirmed) - automated_confirmed,
-                "amr_wis_total":           len(amr_wis),
-                "amr_wis_with_linked_tcs": sum(1 for w in amr_wi_rows if w["linked_count"] > 0),
-                "amr_wi_state_breakdown":  wi_states,
-            },
-            "by_plan": by_plan,
-            "amr_wis": amr_wi_rows,
-        }
-        self._set_cached(cache_key, result)
-        return result
 
     def get_feature_coverage_v2(
         self,
@@ -565,159 +279,6 @@ class ADOClient:
         with self._lock:
             self._cache[key] = (time.monotonic(), data)
 
-    def get_feature_coverage(
-        self, iteration_path: str, qa_members: list[str], qa_tag: str
-    ) -> list[dict]:
-        """Return Feature-level TC automation coverage for a sprint.
-
-        For each Feature in the sprint, counts total TCs linked via 'Tested By'
-        and how many are Automated.  Returns a list of dicts:
-          { id, title, assignee, state, total_tcs, automated_tcs, coverage_pct }
-        """
-        norm_members = sorted({m.strip() for m in qa_members if m and m.strip()})
-        cache_key = self._make_key("feature_coverage", iteration_path, tuple(norm_members), qa_tag)
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            return cached
-
-        member_clause = self._member_or_tag_clause(
-            field="[System.AssignedTo]", members=norm_members, tag=qa_tag
-        )
-        project = "sootballs" if iteration_path.lower().startswith("sootballs") else self.project
-        query = f"""
-            SELECT [System.Id] FROM WorkItems
-            WHERE [System.TeamProject] = '{_esc(project)}'
-              AND [System.IterationPath] = '{_esc(iteration_path)}'
-              AND [System.WorkItemType] IN ('Feature', 'User Story')
-              {('AND (' + member_clause + ')') if member_clause else ''}
-            ORDER BY [System.Id]
-        """
-        ids = self._wiql(project, query)
-        if not ids:
-            self._set_cached(cache_key, [])
-            return []
-
-        fields = [
-            "System.Id", "System.Title", "System.State", "System.AssignedTo",
-            "System.WorkItemType",
-        ]
-        items = self._batch_fetch(project, ids, fields)
-        features = [self._normalise(item) for item in items]
-
-        # For each Feature, find linked TCs via relations
-        result = []
-        for feat in features:
-            wi_id = feat["id"]
-            total_tcs = 0
-            automated_tcs = 0
-            try:
-                rel_url = f"{_ADO_ROOT}/{project}/_apis/wit/workitems/{wi_id}"
-                rel_resp = self._session.get(
-                    rel_url,
-                    params={"api-version": _API_VERSION, "$expand": "relations"},
-                    timeout=15,
-                )
-                if rel_resp.ok:
-                    relations = rel_resp.json().get("relations", []) or []
-                    tc_ids = [
-                        int(r["url"].rstrip("/").split("/")[-1])
-                        for r in relations
-                        if r.get("rel") == "Microsoft.VSTS.Common.TestedBy-Reverse"
-                    ]
-                    if tc_ids:
-                        total_tcs = len(tc_ids)
-                        # Batch-fetch TC automation status
-                        batch_url = f"{_ADO_ROOT}/{self.testplans_project}/_apis/wit/workitemsbatch"
-                        b = self._session.post(
-                            batch_url,
-                            json={
-                                "ids": tc_ids[:200],
-                                "fields": ["Microsoft.VSTS.TCM.AutomationStatus"],
-                            },
-                            params={"api-version": _API_VERSION},
-                            timeout=15,
-                        )
-                        if b.ok:
-                            automated_tcs = sum(
-                                1 for item in b.json().get("value", [])
-                                if item["fields"].get(
-                                    "Microsoft.VSTS.TCM.AutomationStatus"
-                                ) == "Automated"
-                            )
-            except Exception:
-                pass
-
-            result.append({
-                "id": wi_id,
-                "title": feat.get("title", ""),
-                "assignee": feat.get("assignee", ""),
-                "state": feat.get("state", ""),
-                "type": feat.get("work_item_type", ""),
-                "total_tcs": total_tcs,
-                "automated_tcs": automated_tcs,
-                "coverage_pct": round(automated_tcs / total_tcs * 100, 1) if total_tcs else 0,
-            })
-
-        result.sort(key=lambda x: x["coverage_pct"])
-        self._set_cached(cache_key, result)
-        return result
-
-    def get_engineer_automation(self, mapping_file: str | None = None) -> list[dict]:
-        """Return per-engineer automation counts derived from ado_test_mapping.yaml.
-
-        Uses the github_pr field in YAML entries to attribute TCs to the engineer
-        who wrote the automation (by PR author).  Returns:
-          { engineer, tcs_automated, prs, tc_ids[] }
-        """
-        cache_key = self._make_key("engineer_automation", mapping_file or "")
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            return cached
-
-        mapping_result = _load_mapping(mapping_file)
-        if not mapping_result:
-            return []
-
-        mappings = [m for m in mapping_result if not _is_mapping_placeholder(m)]
-
-        # Group TC IDs by github_pr number
-        by_pr: dict[int, list[int]] = {}
-        for m in mappings:
-            pr = m.get("github_pr")
-            if pr and isinstance(pr, int):
-                by_pr.setdefault(pr, []).append(m["tc_id"])
-
-        if not by_pr:
-            self._set_cached(cache_key, [])
-            return []
-
-        # Fetch PR author from GitHub API for each PR (no auth required for public repos)
-        by_engineer: dict[str, dict] = {}
-        import time as _time
-        for pr_num, tc_ids in sorted(by_pr.items()):
-            author = f"PR #{pr_num}"  # fallback if GitHub API unavailable
-            try:
-                gh_resp = self._session.get(
-                    f"https://api.github.com/repos/rapyuta-robotics/sootballs_tests/pulls/{pr_num}",
-                    timeout=10,
-                )
-                if gh_resp.ok:
-                    author = gh_resp.json().get("user", {}).get("login", author)
-            except Exception:
-                pass
-            eng = by_engineer.setdefault(author, {
-                "engineer": author, "tcs_automated": 0, "prs": [], "tc_ids": [],
-            })
-            eng["tcs_automated"] += len(tc_ids)
-            eng["tc_ids"].extend(tc_ids)
-            if pr_num not in eng["prs"]:
-                eng["prs"].append(pr_num)
-            _time.sleep(0.05)
-
-        result = sorted(by_engineer.values(), key=lambda x: -x["tcs_automated"])
-        self._set_cached(cache_key, result)
-        return result
-
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _wiql(self, project: str, query: str) -> list[int]:
@@ -826,36 +387,6 @@ def _canonical_state(raw: str) -> str:
     workflow state is never hidden or dropped, only left uncanonicalized."""
     raw = (raw or "").strip()
     return _STATE_BY_CASEFOLD.get(raw.casefold(), raw)
-
-
-_PARAM_SUFFIX_PATTERNS = [
-    re.compile(r'\s*[-–]\s*(case|scenario|variant)?\s*#?\d+\s*$', re.I),
-    re.compile(r'\s*\(\s*\d+\s*\)\s*$'),
-    re.compile(r'\s*\[\s*.*?\s*\]\s*$'),
-]
-
-
-def _strip_parametrize_suffix(title: str) -> str:
-    """Strip a trailing parametrize-style suffix ("- Case 3", "(2)", "[x=5]")
-    from a Test Case title, for grouping near-duplicate TCs that represent
-    parametrized variants of the same underlying scenario back into one
-    distinct-scenario count. Confirmed against real ADO data: 148 such
-    groups (331 TCs) exist within this team's own AreaPath alone, so the
-    raw TC count and the de-duplicated scenario count are materially
-    different numbers, not a cosmetic distinction.
-
-    This is a best-effort heuristic, not a guaranteed-precise classifier:
-    a title that genuinely ends in a bracketed annotation unrelated to
-    parametrization (e.g. "Verify tote position [WMS]") would be
-    over-merged with any other title differing only in that trailing
-    bracket. Acceptable here because distinct_scenarios is reported
-    alongside the raw TC count, never in place of it — a spot-check of
-    the actual groups found is worthwhile if this number is ever quoted
-    on its own outside the dashboard."""
-    t = (title or "").strip()
-    for pattern in _PARAM_SUFFIX_PATTERNS:
-        t = pattern.sub("", t)
-    return t.strip() or "(untitled)"
 
 
 # ── GitHub nightly health helper ──────────────────────────────────────────────
@@ -1219,66 +750,71 @@ def get_flaky_tests(flaky_report_path: str | None) -> dict:
         return {"status": f"parse_error: {exc}", "total_flaky": 0, "entries": []}
 
 
-def get_release_feature_coverage(sanity_file: str | None) -> dict:
-    """Read amr_master_sanity_status.json (built by gen_amr_master_sanity_suite_v2.py)
-    and group its 51 TC-SAN sanity cases by release (3.4/3.5/3.6/3.7), each with a
-    real automation status — a curated alternative to ADO's own sparse "Feature"
-    work item type for representing release-level coverage (see config.yaml
-    comment on amr_master_sanity_file for why).
+_RELEASE_AUTOMATION_STATUSES = (
+    "automated", "written_not_merged", "yet_to_automate",
+    "manually_verified", "not_automatable", "excluded", "unverified",
+)
 
-    "Automated" and "Partial" both count toward automation_pct (a Partial case has
-    real, passing automation proving some but not all of the stated expectation —
-    still meaningfully covered, not a gap), reported separately so the distinction
-    isn't hidden. "Gap" (any sub-label — Held, Scaffolded, or plain Gap) does not
-    count as automated. "Doc Mismatch" is reported as its own bucket, separate
-    from "gap" — it means the product doesn't match the documented behavior, a
-    documentation-accuracy problem, not a missing-automation one; folding it into
-    "gap" would make it look like more features need test work than actually do.
+
+def get_release_automation_status(release_automation_file: str | None) -> dict:
+    """Read release_automation_status.yaml — the release-wise feature automation
+    master table (Feature -> ADO Suite ID -> Backend PR -> Test PR -> Status),
+    built by reconstructing each release's real feature content from git
+    tag-range commit analysis across rr_sootballs / sootballs_wms_interface /
+    rr_lbc, cross-referencing ADO Test Plans/Suites, and verifying real
+    (non-skipped) test coverage — with Slack used to resolve any gaps git/ADO
+    left open.
+
+    "excluded" features (not actually a new distinct feature for that release)
+    are shown in the table but excluded from automation_pct's denominator so
+    they don't understate real coverage.
     """
-    import json as _json
-    from collections import defaultdict
     from pathlib import Path as _Path
 
-    if not sanity_file:
+    if not release_automation_file:
         return {"status": "no_file_configured", "releases": {}}
 
-    p = _Path(sanity_file)
+    p = _Path(release_automation_file)
     if not p.is_file():
         return {"status": "file_not_found", "path": str(p), "releases": {}}
 
     try:
-        data = _json.loads(p.read_text())
+        data = yaml.safe_load(p.read_text()) or {}
     except Exception as exc:
         return {"status": f"parse_error: {exc}", "releases": {}}
 
-    features = data.get("features", [])
-    by_release: dict[str, list] = defaultdict(list)
-    for f in features:
-        by_release[f.get("release", "?")].append(f)
-
     releases = {}
-    for release, items in by_release.items():
-        automated = sum(1 for f in items if f.get("status") == "Automated")
-        partial = sum(1 for f in items if f.get("status") == "Partial")
-        doc_mismatch = sum(1 for f in items if f.get("status") == "Doc Mismatch")
-        gap = sum(1 for f in items if f.get("status") not in ("Automated", "Partial", "Doc Mismatch"))
-        total = len(items)
+    total_counts = {s: 0 for s in _RELEASE_AUTOMATION_STATUSES}
+    for release, rel_data in (data.get("releases") or {}).items():
+        features = rel_data.get("features") or []
+        counts = {s: 0 for s in _RELEASE_AUTOMATION_STATUSES}
+        for f in features:
+            status = f.get("status", "unverified")
+            counts[status] = counts.get(status, 0) + 1
+            total_counts[status] = total_counts.get(status, 0) + 1
+
+        total = len(features)
+        counted = total - counts["excluded"]
         releases[release] = {
+            "tag_range": rel_data.get("tag_range", ""),
             "total": total,
-            "automated": automated,
-            "partial": partial,
-            "gap": gap,
-            "doc_mismatch": doc_mismatch,
-            "automation_pct": round(automated / total * 100, 1) if total else 0,
-            "automated_or_partial_pct": round((automated + partial) / total * 100, 1) if total else 0,
-            "features": sorted(items, key=lambda f: f.get("tc_id", "")),
+            "counted": counted,
+            **counts,
+            "automation_pct": round(counts["automated"] / counted * 100, 1) if counted else 0,
+            "features": features,
         }
 
+    total = sum(r["total"] for r in releases.values())
+    counted = total - total_counts["excluded"]
     return {
         "status": "ok",
-        "total": len(features),
-        "generated_at_source": data.get("generated_at_source", ""),
         "releases": releases,
+        "totals": {
+            "total": total,
+            "counted": counted,
+            **total_counts,
+            "automation_pct": round(total_counts["automated"] / counted * 100, 1) if counted else 0,
+        },
     }
 
 
@@ -1335,64 +871,3 @@ def resolve_qa_members(cfg: dict, sprint_start: str | None = None, sprint_end: s
     # Fall back to flat list if roster produced nothing (e.g. all entries have future from-dates)
     return active or [m for m in cfg.get("qa_team_members", []) if m and m.strip()]
 
-
-def _load_mapping(mapping_file: str | None) -> list[dict] | None:
-    """Load mappings from ado_test_mapping.yaml.
-
-    Returns:
-        list[dict]  — valid mappings (may be empty if file has no entries).
-        []          — mapping_file is None/empty (feature disabled, not an error).
-        None        — file exists but could not be read or fails schema checks;
-                      callers should surface this as a configuration error.
-    """
-    if not mapping_file:
-        return []
-
-    try:
-        with open(mapping_file) as f:
-            raw = yaml.safe_load(f)
-    except FileNotFoundError:
-        logger.warning("Mapping file not found: %s", mapping_file)
-        return None
-    except yaml.YAMLError as exc:
-        logger.warning("Could not parse mapping file %s as YAML: %s", mapping_file, exc)
-        return None
-    except Exception as exc:
-        logger.warning("Unexpected error reading mapping file %s: %s", mapping_file, exc)
-        return None
-
-    if not isinstance(raw, dict):
-        logger.warning(
-            "Mapping file %s: expected a dict root, got %s",
-            mapping_file, type(raw).__name__,
-        )
-        return None
-
-    mappings = raw.get("mappings")
-    if mappings is None:
-        logger.warning(
-            "Mapping file %s missing 'mappings' key. Found keys: %s",
-            mapping_file, list(raw.keys()),
-        )
-        return None
-
-    if not isinstance(mappings, list):
-        logger.warning(
-            "Mapping file %s: 'mappings' must be a list, got %s",
-            mapping_file, type(mappings).__name__,
-        )
-        return None
-
-    return mappings
-
-
-def _is_mapping_placeholder(entry: dict) -> bool:
-    """Mirror of link_ado_tests._is_placeholder — must stay in sync."""
-    tc_id = entry.get("tc_id")
-    if tc_id is not None and tc_id >= 57000:
-        return True
-    if entry.get("plan_id", 0) == 99999:
-        return True
-    if not entry.get("pytest_method"):
-        return True
-    return False
