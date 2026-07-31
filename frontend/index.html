@@ -844,8 +844,7 @@ function AutomationPage() {
   return (
     <div className="page">
       <div className="section-title">
-        Automation Coverage — Release-wise (3.4 – 3.7)
-        <span className="badge badge-tier2" style={{ marginLeft: 8 }}>Feature → Suite ID → Backend PR → Test PR</span>
+        Automation Coverage
       </div>
       <div className="kpi-grid" style={{ marginBottom: 28 }}>
         <KPICard label="Overall Automation Rate" value={t.automation_pct} unit="%" sub={`${t.automated} of ${t.counted} counted features, across 3.4-3.7`} />
