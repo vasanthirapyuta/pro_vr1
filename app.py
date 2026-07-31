@@ -191,10 +191,28 @@ def engineers():
     members = _qa_members_for_sprint(sprint)
     user_stories = ado.get_user_stories(sprint["iteration_path"], members, QA_TAG)
 
+    # qa_tag ("sb_qa") pulls in a story regardless of assignee, so a cross-team
+    # contributor's item is never missed — but a *former* roster member's old
+    # sb_qa-tagged story would surface here too even though they've since left
+    # (roster `to` date already passed for this sprint). Drop those: anyone
+    # who was ever on the roster but isn't currently active for this sprint
+    # window shouldn't be attributed in the Per Engineer breakdown. A true
+    # non-roster contributor (never listed at all) still counts — that's
+    # exactly what the tag exists for.
+    active_casefold = {m.casefold() for m in members}
+    ever_roster_casefold = {
+        e["name"].strip().casefold()
+        for e in (CFG.get("qa_team_roster") or [])
+        if e.get("name")
+    }
+
     eng: dict[str, dict] = {}
 
     for us in user_stories:
         name = us.get("assignee") or "Unassigned"
+        name_cf = name.casefold()
+        if name_cf in ever_roster_casefold and name_cf not in active_casefold:
+            continue
         e = eng.setdefault(name, _blank_eng(name))
         e["stories"] += 1
         if us["state"] in US_DONE:

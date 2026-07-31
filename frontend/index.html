@@ -284,17 +284,12 @@ function formatIsoDateShort(iso) {
   return `${MONTH_ABBR[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
 }
 
-function OverviewPage({ sprintLabel, onCacheRefreshed }) {
-  const { data: kpi, loading, error, refresh } = useFetch(
+function OverviewPage({ sprintLabel }) {
+  const { data: kpi, loading, error } = useFetch(
     sprintLabel ? `/api/kpi/summary?sprint=${encodeURIComponent(sprintLabel)}` : null
   );
   const { data: trends } = useFetch('/api/kpi/trends');
   const { data: ciStability } = useFetch('/api/ci_stability');
-
-  // Expose refresh handle so parent can trigger after cache clear
-  useEffect(() => {
-    if (onCacheRefreshed) onCacheRefreshed(() => refresh());
-  }, [onCacheRefreshed, refresh]);
 
   const prevKpi = trends && kpi
     ? (() => {
@@ -884,7 +879,7 @@ function App() {
   const [page, setPage]               = useState('overview');
   const [sprintLabel, setSprintLabel] = useState('');
   const [refreshing, setRefreshing]   = useState(false);
-  const pageRefreshRef                = useRef(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const { data: sprints } = useFetch('/api/sprints');
   const { data: healthData } = useFetch('/api/health');
@@ -902,7 +897,12 @@ function App() {
     fetch('/api/refresh', { method: 'POST' })
       .then(r => {
         if (!r.ok) throw new Error(`Cache refresh failed (${r.status})`);
-        pageRefreshRef.current?.();
+        // Bumping refreshTick changes every page's key below, forcing a full
+        // remount (and therefore a fresh fetch) of whichever tab is active —
+        // one mechanism for every tab, instead of each page wiring its own
+        // refresh callback (which only Overview did, and only partially: it
+        // missed its own trends/ciStability fetches).
+        setRefreshTick(t => t + 1);
       })
       .catch(err => {
         // Log to console; avoid confusing data-refresh on a failed cache clear
@@ -924,9 +924,9 @@ function App() {
   ];
 
   const pageEl = (() => {
-    const key = `${page}-${sprintLabel}`;
+    const key = `${page}-${sprintLabel}-${refreshTick}`;
     switch (page) {
-      case 'overview':   return <OverviewPage key={key} sprintLabel={sprintLabel} onCacheRefreshed={fn => { pageRefreshRef.current = fn; }} />;
+      case 'overview':   return <OverviewPage key={key} sprintLabel={sprintLabel} />;
       case 'trends':     return <TrendsPage key={key} />;
       case 'bugs':       return <BugsPage key={key} sprintLabel={sprintLabel} />;
       case 'engineers':  return <EngineerPage key={key} sprintLabel={sprintLabel} />;
