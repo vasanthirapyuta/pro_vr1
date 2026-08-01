@@ -1,0 +1,788 @@
+# Release-wise feature automation status — master table.
+#
+# Built by reconstructing each release's real feature content from git tag-range
+# commit analysis (rr_sootballs, sootballs_wms_interface, rr_lbc and its UI/dependent
+# repos), cross-referencing ADO Test Plans/Suites, looking up all related PRs
+# (backend, UI, and any other dependent-repo PR — not just one) for each feature,
+# and verifying real (non-skipped) test coverage against actual file content —
+# with Slack search used to resolve any gaps git/ADO left open.
+#
+# Sub-release (patch) attribution: for every feature's related PR(s), found the
+# real merge commit (including backport/cherry-pick commits, which get a new SHA
+# but keep the PR number in the message), then walked each base release's patch
+# tags in order and used `git merge-base --is-ancestor` to find the EARLIEST patch
+# tag that contains it. For PRs in dependent repos (not rr_sootballs itself),
+# resolved the exact dependent version pinned in rr_sootballs's docker/.env at
+# each patch tag (WMS_TAG, ROBOT_UI_TAG, ORDERS_UI_MODULES_TAG, IO_AMR_BASE_TAG ->
+# rr_io_amr submodule -> rr_lbc, LEGACY_UI_TAG -> rr_amr_ui) and checked ancestry
+# against that pinned commit instead of the release tag directly.
+#
+# related_prs companion PRs (beyond the one that determined sub_release) were
+# found by bounding the search to the exact commit delta that shipped in each
+# dependent repo for that specific sub-release — i.e. the range between the
+# previous sub-release's pin and this one's — rather than an unbounded keyword
+# search across a repo's whole history, which produces false positives from
+# unrelated work in other time periods.
+#
+# sub_release: null means no related PR exists to attribute a specific patch
+# (kept at the release level).
+#
+# dependency_pins (below): the exact dependent-repo version pinned into each
+# sub-release's docker/.env at build time — the ground truth this whole
+# sub-release attribution is built on.
+#
+# status values:
+#   automated            merged test PR with real, verified (mostly un-skipped) tests
+#   written_not_merged    test PR exists but is still open / was closed unmerged
+#   yet_to_automate       no test PR found; feature is a real automation gap
+#   manually_verified     confirmed working via manual/Slack sign-off, no automated test
+#   not_automatable       genuine hardware/simulation-limit only (e.g. physical scale, LED)
+#   excluded              not actually a new distinct feature for this release
+#   unverified            no conclusive evidence found either way
+#
+# suite_id: null means no ADO suite could be resolved for this feature (reported
+# as such rather than fabricated — some test cases are orphaned / not suite-linked).
+
+releases:
+  "3.4":
+    tag_range: "3.4.0 - 3.4.1"
+    sub_releases:
+      - 3.4.0
+      - 3.4.1
+    features:
+      - feature: Zone Picking
+        sub_release: 3.4.0
+        suite_id: null
+        related_prs: "rr_sootballs#4887, rr_lbc#1733"
+        test_pr: "sootballs_tests#86"
+        status: automated
+        note: "28 tests across 3 files, 2 skipped. Suite ID not resolvable via ADO API."
+      - feature: Dashboards Revamp (Picker Dashboards)
+        sub_release: 3.4.0
+        suite_id: "25316"
+        related_prs: "rr_sootballs#4938, rr_amr_ui#1751"
+        test_pr: "sootballs_tests#98"
+        status: automated
+        note: "12 tests, 0 skipped. rr_amr_ui#1751 is an RC-stabilization PR on the feat/picker-dashboards branch — the branch's own root PR has no clean single squash-merge number in history, so this is the clearest identifiable companion."
+      - feature: Runtime Map Update
+        sub_release: 3.4.0
+        suite_id: "19355"
+        related_prs: "rr_sootballs#4953, sootballs_wms_interface#383, rr_orders_ui_modules#444, rr_sootballs_robot_ui#329, rr_amr_ui#1710, rr_lbc#1732"
+        test_pr: "sootballs_tests#137, sootballs_tests#133"
+        status: automated
+        note: Integration 25 tests/8 skipped; e2e 8 tests/1 skipped.
+      - feature: Separate Waiting Queues
+        sub_release: 3.4.0
+        suite_id: null
+        related_prs: "rr_sootballs#4979"
+        test_pr: "sootballs_tests#94"
+        status: automated
+        note: "12 tests, 0 skipped. Confirmed running nightly via Slack."
+      - feature: Charge on Demand (Autocharging)
+        sub_release: 3.4.0
+        suite_id: "19313"
+        related_prs: "rr_sootballs#4939, rr_amr_ui#1677, rr_lbc#1725"
+        test_pr: "sootballs_tests#147"
+        status: automated
+        note: "23 tests, 0 skipped."
+      - feature: RUI Dynamic Language
+        sub_release: 3.4.0
+        suite_id: "15615"
+        related_prs: "rr_sootballs#4994, rr_sootballs_robot_ui#323"
+        test_pr: "sootballs_tests#111"
+        status: automated
+        note: "Majority of parametrized cases currently skipped, referencing open bugs AB#45461 / AB#15415 — not flakiness."
+      - feature: Tote Group Blacklist (Restrict Tote Type to Tray)
+        sub_release: 3.4.0
+        suite_id: "18573"
+        related_prs: "rr_sootballs#5026, rr_sootballs#5077"
+        test_pr: "sootballs_tests#109"
+        status: automated
+        note: "9 tests, 3 skipped."
+      - feature: Close Tray Notification
+        sub_release: 3.4.0
+        suite_id: "19281"
+        related_prs: "rr_sootballs#5166"
+        test_pr: "sootballs_tests#146"
+        status: automated
+        note: "25 tests, 0 skipped."
+      - feature: User Verification Screen — Pick Location Details
+        sub_release: 3.4.0
+        suite_id: "18592"
+        related_prs: "rr_sootballs#5131"
+        test_pr: "sootballs_tests#131"
+        status: automated
+        note: "15 tests, 0 skipped."
+      - feature: Events Pushing (WMS webhook push)
+        sub_release: 3.4.0
+        suite_id: "34531, 34532, 34534"
+        related_prs: "rr_sootballs#5011, sootballs_wms_interface#494, sootballs_wms_interface#501"
+        test_pr: null
+        status: yet_to_automate
+        note: ADO confirms all 54 test cases in 'Picking Push Events' suite are Not Automated.
+      - feature: Print at Picking v2
+        sub_release: 3.4.0
+        suite_id: "45237"
+        related_prs: "rr_sootballs#4647, sootballs_wms_interface#235"
+        test_pr: "sootballs_tests#39"
+        status: automated
+        note: "24 tests across picking + induction files, 1 skipped."
+  "3.5":
+    tag_range: "3.4.1 - 3.5.4"
+    sub_releases:
+      - 3.5.0
+      - 3.5.1
+      - 3.5.2
+      - 3.5.3
+      - 3.5.4
+    features:
+      - feature: Auto Wheel Release
+        sub_release: 3.5.0
+        suite_id: "45261"
+        related_prs: "rr_sootballs#5350, rr_sootballs#5390"
+        test_pr: "sootballs_tests#226"
+        status: automated
+        note: 44 unskipped tests confirmed.
+      - feature: Group Picking Improvements
+        sub_release: 3.5.0
+        suite_id: "46370"
+        related_prs: "rr_sootballs#5328, rr_sootballs#5364, rr_lbc#1808"
+        test_pr: "sootballs_tests#199, sootballs_tests#229"
+        status: automated
+      - feature: "Pick Data & Quantity Extraction"
+        sub_release: 3.5.0
+        suite_id: null
+        related_prs: "rr_sootballs#5281"
+        test_pr: "sootballs_tests#234, sootballs_tests#236, sootballs_tests#237"
+        status: automated
+        note: "Backend shipped 3.5.0 (Jan 2025); QA-tested ~6 months later in the Barcode Revamp M5 cycle."
+      - feature: Custom Product Code
+        sub_release: 3.5.0
+        suite_id: "46374"
+        related_prs: "rr_sootballs#5272"
+        test_pr: "sootballs_tests#238"
+        status: automated
+        note: "Backend shipped 3.5.0; QA-tested ~7 months later, same Barcode Revamp cycle."
+      - feature: Robot Capacity Limit
+        sub_release: 3.5.0
+        suite_id: "46806"
+        related_prs: "rr_sootballs#5223, rr_amr_ui#1860"
+        test_pr: "sootballs_tests#169, sootballs_tests#189"
+        status: automated
+        note: 14/19 ADO cases flagged automated; 15 real unskipped tests confirmed.
+      - feature: Scan ID Regex
+        sub_release: 3.5.0
+        suite_id: "46809"
+        related_prs: "rr_sootballs#5260"
+        test_pr: "sootballs_tests#195, sootballs_tests#193, sootballs_tests#182"
+        status: automated
+        note: 14/18 ADO cases automated.
+      - feature: Print at Unload (Unloading Label Printing)
+        sub_release: 3.5.0
+        suite_id: "46804"
+        related_prs: "rr_sootballs#5238, rr_orders_ui_modules#508, rr_sootballs_robot_ui#377"
+        test_pr: "sootballs_tests#184"
+        status: automated
+        note: 4/4 ADO cases automated.
+      - feature: PGS Unloading Congestion Avoidance
+        sub_release: 3.5.0
+        suite_id: "23528, 33851"
+        related_prs: "rr_sootballs#5213"
+        test_pr: "sootballs_tests#178"
+        status: automated
+        note: "ADO flags most cases 'Not Automated' but real pytest functions match most scenario descriptions by content, not name — flagged for manual reconciliation."
+      - feature: Replenishment Duplicated Barcode
+        sub_release: 3.5.0
+        suite_id: "19939"
+        related_prs: "rr_sootballs#5167"
+        test_pr: "sootballs_tests#140"
+        status: automated
+        note: "6 duplicate-barcode-specific tests confirmed."
+      - feature: "Close Tray Notification (3.5 follow-up)"
+        sub_release: 3.5.0
+        suite_id: "19281"
+        related_prs: "rr_sootballs#5166, rr_sootballs#5183"
+        test_pr: "sootballs_tests#146"
+        status: automated
+        note: 25 unskipped tests confirmed; ADO shows only ~13/34 cases flagged automated — partial coverage gap remains.
+      - feature: "Tote Group Blacklist & Unit Test"
+        sub_release: 3.5.0
+        suite_id: null
+        related_prs: "rr_sootballs#5026, rr_sootballs#5181, rr_sootballs#5251"
+        test_pr: "sootballs_tests#208"
+        status: automated
+      - feature: IMS Print Retry
+        sub_release: 3.5.2
+        suite_id: null
+        related_prs: "rr_sootballs#5739, rr_sootballs#5826"
+        test_pr: null
+        status: manually_verified
+        note: "Slack (Apr 2026) shows QA manually testing PR #5739's retry logic for 3.5.2 sign-off; confirmed working, no automated test found."
+      - feature: PICK_SCREEN_CONFIRM env
+        sub_release: 3.5.1
+        suite_id: null
+        related_prs: "rr_sootballs#5578, rr_sootballs#5579"
+        test_pr: null
+        status: yet_to_automate
+      - feature: Group Picking Progress Bar env
+        sub_release: 3.5.0
+        suite_id: "46370"
+        related_prs: "rr_sootballs#5412, rr_sootballs#5422"
+        test_pr: "sootballs_tests#229"
+        status: automated
+        note: Bundled with Group Picking Improvements.
+      - feature: User Verification Screen Pick Details (3.5 confirmation)
+        sub_release: 3.5.0
+        suite_id: null
+        related_prs: "rr_sootballs#5131, rr_sootballs_robot_ui#361"
+        test_pr: "sootballs_tests#212"
+        status: automated
+        note: Confirmed via ADO TC 55441 title match.
+  "3.6":
+    tag_range: "3.5.1 - 3.6.3"
+    sub_releases:
+      - 3.6.0
+      - 3.6.1
+      - 3.6.2
+      - 3.6.3
+    features:
+      - feature: "Barcode Revamp - 3.6"
+        sub_release: 3.6.0
+        suite_id: "46374"
+        related_prs: "rr_sootballs#5341, rr_sootballs#5411, rr_sootballs#5519, rr_sootballs#5354"
+        test_pr: "sootballs_tests#234, sootballs_tests#236, sootballs_tests#237"
+        status: automated
+        note: "79 ADO TCs; ~140 real tests across 5 files, small number skipped."
+      - feature: Group Picking Improvements (3.6)
+        sub_release: 3.6.0
+        suite_id: "46370"
+        related_prs: "rr_sootballs#5328, rr_lbc#1808"
+        test_pr: "sootballs_tests#191, sootballs_tests#199, sootballs_tests#229"
+        status: automated
+        note: "22 real tests confirmed, 3 skipped."
+      - feature: Auto Wheel Release (3.6)
+        sub_release: 3.6.0
+        suite_id: "45261"
+        related_prs: "rr_sootballs#5350, rr_sootballs#5442"
+        test_pr: "sootballs_tests#226"
+        status: automated
+        note: "44 real tests, 0 skipped."
+      - feature: Skip Pick
+        sub_release: 3.6.0
+        suite_id: "88665"
+        related_prs: "rr_sootballs#5562, rr_sootballs#5755, rr_sootballs_robot_ui#537, rr_sootballs_robot_ui#540, rr_amr_ui#2016, rr_lbc#1891, rr_lbc#1892"
+        test_pr: "sootballs_tests#305"
+        status: automated
+        note: Only 6 real tests found locally vs ~20 ADO test cases — coverage looks partial.
+      - feature: Recovery Label
+        sub_release: null
+        suite_id: "88565"
+        related_prs: null
+        test_pr: "sootballs_tests#184"
+        status: automated
+        note: "No dedicated PR — built into existing IMS/unload label logic. Sub-release not determinable without a related PR; kept at the 3.6 release level."
+      - feature: "Generate-and-Reprint-Label"
+        sub_release: 3.6.0
+        suite_id: "90490"
+        related_prs: "rr_sootballs#5584, rr_sootballs#5739"
+        test_pr: "sootballs_tests#184"
+        status: automated
+      - feature: Multi Shipper
+        sub_release: 3.6.0
+        suite_id: "86066"
+        related_prs: "rr_sootballs#5415, rr_amr_ui#1945"
+        test_pr: "sootballs_tests#255 (closed, never merged); sootballs_tests#233 (merged 2026-07-15)"
+        status: written_not_merged
+        note: "Integration test PR abandoned; only UI e2e coverage (11 tests, 0 skipped) landed, ~5 months after 3.6 shipped."
+      - feature: Multishipper Dashboard/Worklist Filter
+        sub_release: 3.6.0
+        suite_id: null
+        related_prs: "rr_amr_ui#1980"
+        test_pr: null
+        status: yet_to_automate
+        note: "Reclassified from 3.7.1 (was 'PR not resolved'). Real PR found: rr_amr_ui#1980 'multishipper filter' — distinct from the base Multi Shipper feature (rr_amr_ui#1945, already tracked above via rr_sootballs#5415). Verified via LEGACY_UI_TAG pin (image io_amr_ui): PR #1980 is an ancestor of the 3.6.0 pin (2.13.12, tagged 2025-10-28) — independently corroborated by merge date (Aug 2025, months before that pin and before 3.6.0's own tag date of 2026-02-23). Existing test_multi_shipper_ui.py covers the base feature, not this filter."
+      - feature: Orderline Rejection / Partially Accepted CSV
+        sub_release: 3.6.1
+        suite_id: "87790, 88751"
+        related_prs: "sootballs_wms_interface#651"
+        test_pr: "sootballs_tests#517"
+        status: automated
+        note: "Backend landed in 3.6 window but only automated ~5 months later during the 3.7.2 QA cycle — date mismatch flagged, not smoothed over. PR merged 2026-02-03, before 3.6.0 even shipped (2026-02-23) — but the WMS_TAG pin frozen into the 3.6.0 build (v6.18.0, cut Dec 2025) predates it, so it wasn't actually pulled in until the 3.6.1 build (pinned to v6.19.2, cut Mar 2026)."
+      - feature: Wait for Charge Mode
+        sub_release: 3.6.0
+        suite_id: "86274, 86278"
+        related_prs: "rr_lbc#1893, rr_lbc#1904, rr_sootballs#5771, rr_sootballs#5808, rr_lbc#1902"
+        test_pr: null
+        status: yet_to_automate
+        note: ADO suite exists but has zero test cases populated.
+      - feature: Custom Priority Picking (1st Iteration)
+        sub_release: 3.6.1
+        suite_id: null
+        related_prs: "rr_sootballs#5851"
+        test_pr: null
+        status: manually_verified
+        note: "Slack (#sb_release_management, 2026-03-06): all test cases passed after real-robot deployment in rrmaadev."
+      - feature: Weight Inspection
+        sub_release: 3.6.0
+        suite_id: null
+        related_prs: "rr_sootballs#5443, rr_sootballs_robot_ui#442"
+        test_pr: null
+        status: not_automatable
+        note: "Slack shows explicit dependence on a physical weighing scale — real-robot testing only."
+      - feature: Exception Flow in Replenishment
+        sub_release: 3.6.0
+        suite_id: null
+        related_prs: "rr_sootballs#5430"
+        test_pr: "sootballs_tests#256, sootballs_tests#270"
+        status: automated
+      - feature: Download_CSV (regression suite)
+        sub_release: null
+        suite_id: "92633"
+        related_prs: null
+        test_pr: null
+        status: excluded
+        note: "Pre-existing capability (sootballs_wms_interface#486/#504/#639 etc.) getting new regression coverage, not a new 3.6 feature."
+  "3.7":
+    tag_range: "3.6.3 - 3.7.2 (covers 3.7.0, 3.7.1, 3.7.2)"
+    sub_releases:
+      - 3.7.0
+      - 3.7.1
+      - 3.7.2
+    features:
+      - feature: Independent Orderline Rejection — core
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5704"
+        test_pr: "sootballs_tests#517"
+        status: automated
+        note: "3.7.0. Only test proving OLR core behavior merged 2026-07-13, ~2 months after 3.7.0 shipped (2026-05-05), inside a PR scoped to later FK-validation work."
+      - feature: "Independent Orderline Rejection — default-off safety guard"
+        sub_release: 3.7.1
+        suite_id: null
+        related_prs: "rr_sootballs#6016, rr_sootballs#6027"
+        test_pr: "sootballs_tests#517"
+        status: automated
+        note: "3.7.1. TC-OLR-DEFAULT explicitly proves default-disabled behavior."
+      - feature: Independent Orderline Rejection
+        sub_release: 3.7.2
+        suite_id: 106372 (plan 93258)
+        related_prs: "rr_sootballs#5981"
+        test_pr: "sootballs_tests#517"
+        status: automated
+        note: 3.7.2. 6 TCs.
+      - feature: FK Validation / Independent Orderline Rejection (shared PR)
+        sub_release: 3.7.2
+        suite_id: "115688"
+        related_prs: "sootballs_wms_interface#651"
+        test_pr: "sootballs_tests#521"
+        status: automated
+        note: 3.7.2. 10 TCs.
+      - feature: Fleet Availability Version
+        sub_release: 3.7.2
+        suite_id: "118238"
+        related_prs: "rr_sootballs#5842"
+        test_pr: "sootballs_tests#516"
+        status: automated
+        note: 3.7.2.
+      - feature: ADHOC MOVE Dispatch Fix
+        sub_release: 3.7.1
+        suite_id: "118162, 113759 (0 TCs linked in ADO on this second suite — pure linking gap)"
+        related_prs: "rr_sootballs#6021"
+        test_pr: "sootballs_tests#519"
+        status: automated
+        note: 3.7.1/3.7.2 — same backend + test PR tracked under two ADO suites; folded into one row. 2 real tests in test_adhoc_move_regression.py.
+      - feature: Barcode Revamp (3.7.2)
+        sub_release: 3.7.2
+        suite_id: "46374"
+        related_prs: "rr_sootballs#6159"
+        test_pr: "sootballs_tests#559"
+        status: automated
+        note: 23 TCs. Suite ID unconfirmed match — plan is named '3.6' in ADO.
+      - feature: Transport Work Dispatcher
+        sub_release: 3.7.2
+        suite_id: "113852"
+        related_prs: "rr_sootballs#5922"
+        test_pr: "sootballs_tests#509"
+        status: written_not_merged
+        note: "Nearly cut from 3.7.2 per Slack (requirements gap), then revived with a new PR; PR still open."
+      - feature: Custom Picking Instructions
+        sub_release: 3.7.2
+        suite_id: "118240"
+        related_prs: null
+        test_pr: "sootballs_tests#510"
+        status: written_not_merged
+        note: Real backend PR not located in any of the 4 repos checked.
+      - feature: Replenishment Work Dispatcher
+        sub_release: 3.7.2
+        suite_id: "118160"
+        related_prs: "rr_sootballs#6075"
+        test_pr: "sootballs_tests#540"
+        status: automated
+        note: 14 TCs.
+      - feature: Picking Proceed With Tote Scan
+        sub_release: 3.7.2
+        suite_id: "113855"
+        related_prs: "rr_sootballs#6012"
+        test_pr: null
+        status: yet_to_automate
+      - feature: OL Priority Bucket Strategies
+        sub_release: 3.7.2
+        suite_id: "113947"
+        related_prs: "sootballs_wms_interface#691"
+        test_pr: null
+        status: yet_to_automate
+        note: "Real backend shipped (merged 2026-07-01), no test PR."
+      - feature: Custom Priority Picking (Iteration 2)
+        sub_release: 3.7.2
+        suite_id: "113962"
+        related_prs: "rr_sootballs#5891"
+        test_pr: null
+        status: yet_to_automate
+        note: Backend PR unconfirmed. Next level up from OL Priority Bucket Strategies.
+      - feature: TSP Improvements
+        sub_release: 3.7.2
+        suite_id: "118237"
+        related_prs: "rr_lbc#2033, rr_lbc#2034"
+        test_pr: null
+        status: yet_to_automate
+        note: "Real backend shipped (both merged mid-June); all 7 ADO test cases still in Design state. Re-verified via IO_AMR_BASE_TAG submodule-pin method — confirmed 3.7.2, no change."
+      - feature: MRRP Fixes
+        sub_release: 3.7.2
+        suite_id: "118236"
+        related_prs: null
+        test_pr: null
+        status: manually_verified
+        note: "Config predates 3.7.2. Confirmed 'tested in simulation, all passed' via Slack (2026-06-30), no automated coverage."
+      - feature: PGS LED During Servicing
+        sub_release: 3.7.2
+        suite_id: "113850"
+        related_prs: "rr_sootballs#6111"
+        test_pr: "sootballs_tests#537"
+        status: not_automatable
+        note: Physical LED verification required.
+      - feature: Weight Scale — Full Integration
+        sub_release: 3.7.2
+        suite_id: "112721"
+        related_prs: "rr_sootballs#5824 (and others)"
+        test_pr: null
+        status: not_automatable
+        note: Physical robot required.
+      - feature: System UI Configure
+        sub_release: 3.7.2
+        suite_id: null
+        related_prs: null
+        test_pr: null
+        status: excluded
+        note: "3.7.2. Confirmed by Pierre in Slack: not a separate feature, not applicable."
+      - feature: "Weight Inspection — pack/subpack mass data-model enabler"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5654"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Pure data-model enabler, no independently testable behavior yet."
+      - feature: "Wait For Charge Mode (RUI WaitForJob UIAction + MFA=0 charge-policy fix)"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5808, rr_sootballs#5858, rr_sootballs#5789, rr_sootballs_robot_ui#549, rr_sootballs_robot_ui#554, rr_amr_ui#2026"
+        test_pr: null
+        status: yet_to_automate
+        note: "3.7.0. test_smoke_wait_for_job.py looked like a match but predates this feature by ~2 years (unrelated idle-robot screen) — ruled out."
+      - feature: "Enjoy Picking Phase 1 (goal timer, leaderboard, picker stats)"
+        sub_release: 3.7.0
+        suite_id: 93745 (same 44 TCs duplicated under suite 109497)
+        related_prs: "rr_sootballs_robot_ui#546"
+        test_pr: "sootballs_tests#612 (open)"
+        status: written_not_merged
+        note: "3.7.0. 16 real tests across 3 files. Backend PR now confirmed as rr_sootballs_robot_ui#546 ('feat: Enjoy Picking'), verified ancestor of the 3.7.0 ROBOT_UI_TAG pin."
+      - feature: "PGS Picker UI (Picker Map / next-robot number / direction panel)"
+        sub_release: 3.7.0
+        suite_id: "99870"
+        related_prs: "rr_sootballs#5896, rr_sootballs_robot_ui#562"
+        test_pr: null
+        status: yet_to_automate
+        note: 3.7.0.
+      - feature: Print Agent (new printing backend architecture)
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5584"
+        test_pr: null
+        status: yet_to_automate
+        note: "3.7.0. AB#38909 still 'QA Testing' despite merged code. Backend PR #5584 is actually an ancestor of 3.5.2 already (shipped early, backported into release/3.5) — kept at 3.7.0 since that's the release it became QA-trackable in, same 'shipped early, tracked later' pattern as Pick Data & Quantity Extraction / Custom Product Code above. The real print-agent implementation lives in the rr_print_agent repo, but that repo has only ever carried one tag (v0.1.0) since inception — no further sub-release refinement is possible from its own tag history; rr_sootballs#5584 remains the only resolvable integration-point PR."
+      - feature: IMS Print Retry (3.7.0)
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5739"
+        test_pr: null
+        status: yet_to_automate
+        note: "AB#85552 still 'In Review' despite merged code. Same gap first shipped in 3.5/3.6 — still unautomated here."
+      - feature: Skip Pick — Kao customization
+        sub_release: 3.7.0
+        suite_id: "109353"
+        related_prs: "rr_sootballs#5562, rr_sootballs#5755"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Pre-existing 3.6.0 feature getting Kao-specific regression; existing test files already exercise MAX_SKIP_PICK_ATTEMPTS."
+      - feature: Zone Batch Ordering — Kao congestion regression (pick_drop_zone_ordering)
+        sub_release: 3.7.0
+        suite_id: 99375 / 109498 (same 5 TC IDs duplicated across 3.7.0 and 3.7.1 suites)
+        related_prs: null
+        test_pr: null
+        status: excluded
+        note: "3.7.0/3.7.1. Pre-existing capability (<3.4 per internal feature-version matrix); existing zone_picking tests already cover it."
+      - feature: "System UI Configure (Kratos auth rollout, /system-ui routing)"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5977"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Config/routing only, not a separate feature (distinct from the 3.7.2 System UI Configure row above)."
+      - feature: ExePathFeedback simulation enabler (dist_to_goal/angle_to_goal)
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5921"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Sim-infra enabler, not a distinct QA-testable feature."
+      - feature: Simulation scanner login support
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5793"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Sim-infra enabler; AB#85608 still 'In Review'."
+      - feature: "Configurable rosbridge/log-collector toggles (ROI simulation)"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5880"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Sim-infra only."
+      - feature: Replenishment unload timing tracking
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5623"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Tracing only; AB#68224 still 'QA Testing'."
+      - feature: Connection monitoring fix (405 etcd log errors)
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5822"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Infra bugfix, not a feature."
+      - feature: "Zone-picking cutoff-time bug fix (shipper-count recalc after rebatch)"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_sootballs#5707"
+        test_pr: null
+        status: excluded
+        note: "3.7.0. Bugfix (AB#82324 logged as Bug, not Feature), not a distinct feature."
+      - feature: Enjoy Picking Phase 2 — Chance Mode + multiplier
+        sub_release: 3.7.1
+        suite_id: "109497 (contains phase-1 goal-timer TCs; no distinct chance-mode TC set found)"
+        related_prs: "rr_sootballs#5869, rr_sootballs#6055, rr_sootballs#5875, rr_sootballs#6054, rr_amr_ui#2046"
+        test_pr: "sootballs_tests#612 (open) — touches ENABLE_ENJOY_PICKING_CHANCE_MODE config plumbing only"
+        status: yet_to_automate
+        note: "3.7.1. Zero tests exercise actual chance-mode behavior. Re-verified against these real backend PRs directly (a round-1 pass had mistakenly checked an unrelated robot_ui PR found via keyword search and proposed moving this to 3.7.0 — retracted; these are the correct PRs and confirm 3.7.1)."
+      - feature: "Weight Scale — full detection logic + default-off guard"
+        sub_release: 3.7.1
+        suite_id: null
+        related_prs: "rr_sootballs#5824, rr_sootballs#6028, rr_sootballs#6029"
+        test_pr: null
+        status: not_automatable
+        note: 3.7.1. Requires physical weight scale.
+      - feature: Replenishment Upload Trace (productId + BigQuery)
+        sub_release: 3.7.1
+        suite_id: null
+        related_prs: "rr_sootballs#6069, rr_sootballs#6074"
+        test_pr: null
+        status: excluded
+        note: 3.7.1. Observability/BigQuery pipeline only.
+      - feature: Batch Induction PickItem Trace
+        sub_release: 3.7.1
+        suite_id: null
+        related_prs: "rr_sootballs#6034, rr_sootballs#6071"
+        test_pr: null
+        status: excluded
+        note: "3.7.1. Tracing enabler only; confirmed by git ancestry to ship in 3.7.1, not 3.7.0."
+      - feature: "Work List UI Enhancements (Tote Progress column, Status/Unload-Region filters, bulk induction-region update)"
+        sub_release: 3.7.0
+        suite_id: null
+        related_prs: "rr_orders_ui_modules#578, #588, #559, #540"
+        test_pr: null
+        status: yet_to_automate
+        note: "Reclassified from 3.7.1 to 3.7.0. All 4 PRs verified ancestors of the 3.7.0 ORDERS_UI_MODULES_TAG pin (1.13.1), independently corroborated by merge date (Jul 2025-Jan 2026, months before that pin and 3.7.0 itself). Existing test_picking_workflow_work_listing.py covers other filters, not these."
+      - feature: Rosbag Snapshot Toggle (rio console)
+        sub_release: null
+        suite_id: null
+        related_prs: "rr_sootballs#6076"
+        test_pr: null
+        status: excluded
+        note: "Commonly believed to be a 3.7.1 feature, but git merge-base --is-ancestor proves the merge commit is reachable from neither the 3.7.1 nor 3.7.2 tag — only exists on devel, never backported to release/3.7. Kept here (rather than silently dropped) so this correction isn't lost."
+dependency_pins:
+  3.4.0:
+    IO_AMR_BASE_TAG: "5.3.0-rc.6"
+    WMS_TAG: 6.6.3
+    ROBOT_UI_TAG: 3.4.5
+    ORDERS_UI_MODULES_TAG: 1.10.5
+    LEGACY_UI_TAG: 2.10.2
+    SYSTEM_UI_TAG: 0.7.17
+    WEB_INTERFACE_TAG: "0.7.9-AMR"
+    IMS_TAG: 7.1.2
+    TASKS_TAG: 5.3.0
+    GWM_TAG: 3.8.5
+  3.4.1:
+    IO_AMR_BASE_TAG: "5.3.0-rc.10"
+    WMS_TAG: 6.10.1
+    ROBOT_UI_TAG: 3.4.10
+    ORDERS_UI_MODULES_TAG: 1.10.7
+    LEGACY_UI_TAG: 2.10.5
+    SYSTEM_UI_TAG: 0.7.30
+    WEB_INTERFACE_TAG: "0.7.12-AMR"
+    IMS_TAG: 7.2.0
+    TASKS_TAG: 5.3.0
+    GWM_TAG: 3.10.4
+  3.5.0:
+    IO_AMR_BASE_TAG: "5.4.0-rc.3"
+    WMS_TAG: 6.12.0
+    ROBOT_UI_TAG: 3.5.6
+    ORDERS_UI_MODULES_TAG: 1.11.2
+    LEGACY_UI_TAG: 2.13.1
+    SYSTEM_UI_TAG: 0.8.14
+    WEB_INTERFACE_TAG: 0.8.16
+    IMS_TAG: 7.4.1
+    TASKS_TAG: 5.4.1
+    GWM_TAG: 3.10.10
+  3.5.1:
+    IO_AMR_BASE_TAG: "5.4.0-rc.7"
+    WMS_TAG: 6.13.2
+    ROBOT_UI_TAG: 3.5.8
+    ORDERS_UI_MODULES_TAG: 1.11.3
+    LEGACY_UI_TAG: 2.12.1
+    SYSTEM_UI_TAG: 0.8.14
+    WEB_INTERFACE_TAG: 0.8.16
+    IMS_TAG: 7.6.0
+    TASKS_TAG: 5.4.2
+    GWM_TAG: 3.10.10
+  3.5.2:
+    IO_AMR_BASE_TAG: "5.4.0-rc.9"
+    WMS_TAG: 6.20.1
+    ROBOT_UI_TAG: 3.5.11
+    ORDERS_UI_MODULES_TAG: 1.11.5
+    LEGACY_UI_TAG: 2.13.7
+    SYSTEM_UI_TAG: 0.8.14
+    WEB_INTERFACE_TAG: 0.8.26
+    IMS_TAG: 7.8.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.10.19
+  3.5.3:
+    IO_AMR_BASE_TAG: "5.4.0-rc.9"
+    WMS_TAG: 6.20.1
+    ROBOT_UI_TAG: 3.5.11
+    ORDERS_UI_MODULES_TAG: 1.11.5
+    LEGACY_UI_TAG: 2.13.7
+    SYSTEM_UI_TAG: 0.8.14
+    WEB_INTERFACE_TAG: 0.8.26
+    IMS_TAG: 7.8.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.10.19
+  3.5.4:
+    IO_AMR_BASE_TAG: "5.4.0-rc.9"
+    WMS_TAG: 7.0.1
+    ROBOT_UI_TAG: 3.5.11
+    ORDERS_UI_MODULES_TAG: 1.11.5
+    LEGACY_UI_TAG: 2.13.7
+    SYSTEM_UI_TAG: 0.8.14
+    WEB_INTERFACE_TAG: 0.8.26
+    IMS_TAG: 7.8.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.10.19
+  3.6.0:
+    IO_AMR_BASE_TAG: 5.5.12
+    WMS_TAG: 6.18.0
+    ROBOT_UI_TAG: 3.6.10
+    ORDERS_UI_MODULES_TAG: 1.12.6
+    LEGACY_UI_TAG: 2.13.12
+    SYSTEM_UI_TAG: 0.9.42
+    WEB_INTERFACE_TAG: 0.8.42
+    IMS_TAG: 7.9.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.12.8
+  3.6.1:
+    IO_AMR_BASE_TAG: 5.5.13
+    WMS_TAG: 6.19.2
+    ROBOT_UI_TAG: 3.6.13
+    ORDERS_UI_MODULES_TAG: 1.12.6
+    LEGACY_UI_TAG: 2.13.14
+    SYSTEM_UI_TAG: 0.9.44
+    WEB_INTERFACE_TAG: 0.8.44
+    IMS_TAG: 7.9.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.12.8
+  3.6.2:
+    IO_AMR_BASE_TAG: 5.5.15
+    WMS_TAG: 6.20.0
+    ROBOT_UI_TAG: 3.6.13
+    ORDERS_UI_MODULES_TAG: 1.12.6
+    LEGACY_UI_TAG: 2.13.15
+    SYSTEM_UI_TAG: 0.9.44
+    WEB_INTERFACE_TAG: 0.8.44
+    IMS_TAG: 7.9.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.12.8
+  3.6.3:
+    IO_AMR_BASE_TAG: 5.5.16
+    WMS_TAG: 6.20.0
+    ROBOT_UI_TAG: 3.6.13
+    ORDERS_UI_MODULES_TAG: 1.12.6
+    LEGACY_UI_TAG: 2.13.15
+    SYSTEM_UI_TAG: 0.9.44
+    WEB_INTERFACE_TAG: 0.8.44
+    IMS_TAG: 7.9.0
+    TASKS_TAG: 5.4.2
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.12.8
+  3.7.0:
+    IO_AMR_BASE_TAG: 5.6.0
+    WMS_TAG: 7.0.0
+    ROBOT_UI_TAG: 3.7.0
+    ORDERS_UI_MODULES_TAG: 1.13.1
+    LEGACY_UI_TAG: 2.14.2
+    SYSTEM_UI_TAG: 0.14.25
+    WEB_INTERFACE_TAG: 0.8.47
+    IMS_TAG: 8.0.0
+    TASKS_TAG: 5.5.0
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.13.0
+  3.7.1:
+    IO_AMR_BASE_TAG: 5.6.1
+    WMS_TAG: 7.0.1
+    ROBOT_UI_TAG: 3.7.0
+    ORDERS_UI_MODULES_TAG: 1.13.1
+    LEGACY_UI_TAG: 2.14.3
+    SYSTEM_UI_TAG: 0.14.29
+    WEB_INTERFACE_TAG: 0.8.47
+    IMS_TAG: 8.0.0
+    TASKS_TAG: 5.5.1
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.13.0
+  3.7.2:
+    IO_AMR_BASE_TAG: 5.6.6
+    WMS_TAG: 7.0.3
+    ROBOT_UI_TAG: 3.7.3
+    ORDERS_UI_MODULES_TAG: 1.13.2
+    LEGACY_UI_TAG: 2.14.11
+    SYSTEM_UI_TAG: 0.14.31
+    WEB_INTERFACE_TAG: 0.8.48
+    IMS_TAG: 8.0.0
+    TASKS_TAG: 5.5.1
+    PRINT_AGENT_TAG: 0.1.0
+    GWM_TAG: 3.14.2

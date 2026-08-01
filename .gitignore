@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 .env
 .vscode/
-data/
 uploaded_data/
 *.zip
 *.egg-info

@@ -31,7 +31,7 @@ Data sources:
 | Test Plans, Test Cases, automation status | ADO `sootballs`, AreaPath `sootballs\qa` | testplan/plans + WIQL |
 | CI Stability % (nightly integration + e2e) | GitHub Actions | `allure-summary-*` artifact (`widgets/summary.json`) per workflow run |
 | Nightly CI health / run history | GitHub Actions | workflow runs API |
-| Release-wise feature automation (3.4–3.7) | Local file | `qa_tooling/release_automation_status.yaml` (see below) |
+| Release-wise feature automation (3.4–3.7, sub-release granular) | Local file (this repo) | `data/release_automation_status.yaml` (see below) |
 | Flaky test tracking | Local file | `flaky_tests_report.json` |
 
 ---
@@ -71,7 +71,7 @@ qa_tag: "sb_qa"     # WIs with this tag are always included regardless of assign
 feature_coverage_cache_file: null  # qa_tooling/feature_coverage_cache.json — Feature Coverage v2 endpoint
 snapshot_file: null                # qa_tooling/qa_snapshot_*.json — ci_fix_coverage, test_area_breakdown
 flaky_report_file: null            # qa_tooling/flaky_tests_report.json — Flaky tests
-release_automation_file: null      # qa_tooling/release_automation_status.yaml — Automation tab (3.4-3.7)
+release_automation_file: "data/release_automation_status.yaml"  # Automation tab (3.4-3.7), relative to this repo's root
 
 sprints:
   - label: "PI3 Sprint 2"
@@ -98,8 +98,9 @@ pip install -r requirements.txt
 export ADO_PAT=<your-personal-access-token>
 export GITHUB_TOKEN=<your-github-token>          # or rely on `gh auth token` locally
 
-# 3. Optional: point to the generated local files listed in Configuration above
-export RELEASE_AUTOMATION_FILE=/path/to/sootballs_tests/qa_tooling/release_automation_status.yaml
+# 3. Optional: point to other generated local files listed in Configuration above
+#    (release_automation_file ships with this repo at data/release_automation_status.yaml
+#    and needs no override for local runs)
 
 # 4. Start the server
 python app.py
@@ -115,10 +116,10 @@ docker build -t qa-dashboard .
 
 docker run \
   -e ADO_PAT=<your-pat> \
-  -e RELEASE_AUTOMATION_FILE=/app/release_automation_status.yaml \
-  -v /path/to/sootballs_tests/qa_tooling/release_automation_status.yaml:/app/release_automation_status.yaml:ro \
   -p 5050:5050 \
   qa-dashboard
+# release_automation_file (data/release_automation_status.yaml) ships inside the image —
+# no volume mount needed unless you want to override it with a newer export.
 ```
 
 ---
@@ -135,7 +136,7 @@ docker run \
 | GET | `/api/bugs?sprint=<label>` | PI-wide bug health — flow, lead time, aging, by-area (not just QA-filed) |
 | GET | `/api/testplans` | List of ADO Test Plans (id, name, iteration, state) |
 | GET | `/api/feature_coverage_v2?sprint=<label>` | Sprint-scoped Feature coverage, cache-driven from `traverse_feature_coverage.py`'s pre-built export |
-| GET | `/api/release_automation` | Release-wise (3.4–3.7) Feature → Suite ID → Backend PR → Test PR → Status master table — see below |
+| GET | `/api/release_automation` | Release-wise, sub-release granular (3.4–3.7) Feature → Suite ID → Related PRs → Test PR → Status master table — see below |
 | GET | `/api/nightly_health?n_runs=<n>` | Nightly integration/e2e run history and pass-rate trend from GitHub Actions |
 | GET | `/api/ci_stability` | CI Stability % — real Allure pass rate per nightly suite (see below), 30-min cached |
 | GET | `/api/flaky_tests` | Tests marked `@pytest.mark.flaky`, from `flaky_tests_report.json` |
@@ -179,17 +180,32 @@ originally considered for it.
 
 ### Release-wise Feature Automation (3.4–3.7) — how it actually works
 
-Reads `qa_tooling/release_automation_status.yaml` in `sootballs_tests` — every real feature
-shipped in releases 3.4 through 3.7, each mapped to its ADO Test Suite ID, backend product PR,
-and test-automation PR, with a verified status (Automated / Written-Not-Merged / Yet-to-Automate /
-Manually-Verified / Not-Automatable / Excluded / Unverified).
+Reads `data/release_automation_status.yaml` in this repo — every real feature shipped in
+releases 3.4 through 3.7, further broken down by **sub-release** (e.g. 3.7.0 / 3.7.1 / 3.7.2),
+each mapped to its ADO Test Suite ID, every related PR (backend, UI, and any other dependent-repo
+PR — not just one), and its test-automation PR, with a verified status (Automated /
+Written-Not-Merged / Yet-to-Automate / Manually-Verified / Not-Automatable / Excluded /
+Unverified).
 
 Built by reconstructing each release's real feature content from git tag-range commit analysis
-across `rr_sootballs`, `sootballs_wms_interface`, and `rr_lbc`, cross-referencing ADO Test
-Plans/Suites, looking up the backend and test PR for each feature, and verifying real (non-skipped)
+across `rr_sootballs` and its dependent repos (`sootballs_wms_interface`, `rr_lbc`,
+`rr_sootballs_robot_ui`, `rr_orders_ui_modules`, `rr_amr_ui`, and others), cross-referencing ADO
+Test Plans/Suites, looking up every related PR for each feature, and verifying real (non-skipped)
 test coverage against actual file content — not just PR titles. Slack search resolved any gaps
 git/ADO evidence left open (e.g. confirming a feature was manually verified on real hardware, or
 that a feature shipped in one release but wasn't QA-tested until a later cycle).
+
+**Sub-release attribution** is resolved from real dependency evidence, not date proximity: for
+each feature's related PR(s), the real merge commit (including backport/cherry-pick commits) is
+checked with `git merge-base --is-ancestor` against each patch tag in order. For PRs in dependent
+repos, the exact version pinned into `rr_sootballs`'s `docker/.env` at each patch tag is resolved
+first (`WMS_TAG`, `ROBOT_UI_TAG`, `ORDERS_UI_MODULES_TAG`, `IO_AMR_BASE_TAG` → the `rr_io_amr`
+submodule → `rr_lbc`, `LEGACY_UI_TAG` → `rr_amr_ui`) and ancestry is checked against that pinned
+commit instead. Companion PRs beyond the one that determined sub-release placement are found by
+bounding the search to the exact commit delta that shipped in each dependent repo for that
+specific sub-release, rather than an unbounded keyword search that would surface unrelated work
+from other time periods. The dashboard shows each sub-release's full dependency-pin snapshot
+directly above its feature table for this reason.
 
 Deliberately **not** built from ADO's own "Feature" work item type: only 39 Features exist
 project-wide, and only 5 carry any release tag at all — confirmed too sparse to represent
@@ -206,7 +222,7 @@ release-level coverage on its own.
 | 🐛 Bug Analytics | PI-wide bug flow (created vs. resolved), lead time, aging |
 | 👤 Per Engineer | Individual story completion per QA team member |
 | 🧪 Test Plans | List of ADO Test Plans in the sootballs project, linked out to each plan |
-| 🤖 Automation | Release-wise (3.4–3.7) Feature → Suite ID → Backend PR → Test PR → Status master table |
+| 🤖 Automation | Release-wise, sub-release granular (3.4–3.7) Feature → Suite ID → Related PRs → Test PR → Status master table |
 
 ---
 

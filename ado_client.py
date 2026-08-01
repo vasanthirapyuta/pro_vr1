@@ -34,6 +34,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections import defaultdict
 from datetime import date as _date
 from typing import Any
 
@@ -757,13 +758,18 @@ _RELEASE_AUTOMATION_STATUSES = (
 
 
 def get_release_automation_status(release_automation_file: str | None) -> dict:
-    """Read release_automation_status.yaml — the release-wise feature automation
-    master table (Feature -> ADO Suite ID -> Backend PR -> Test PR -> Status),
-    built by reconstructing each release's real feature content from git
-    tag-range commit analysis across rr_sootballs / sootballs_wms_interface /
-    rr_lbc, cross-referencing ADO Test Plans/Suites, and verifying real
-    (non-skipped) test coverage — with Slack used to resolve any gaps git/ADO
-    left open.
+    """Read release_automation_status.yaml — the release-wise, sub-release granular
+    feature automation master table (Feature -> Sub-release -> ADO Suite ID ->
+    Related PRs -> Test PR -> Status), built by reconstructing each release's real
+    feature content from git tag-range commit analysis across rr_sootballs and its
+    dependent repos, cross-referencing ADO Test Plans/Suites, and verifying real
+    (non-skipped) test coverage — with Slack used to resolve any gaps git/ADO left
+    open.
+
+    Each release's features are also grouped by sub_release (e.g. 3.7.0/3.7.1/3.7.2)
+    into sub_release_breakdown, using the yaml's sub_releases ordering; features
+    with no sub_release attributable (no related PR to check ancestry against) land
+    in an "unresolved" bucket rather than being silently dropped.
 
     "excluded" features (not actually a new distinct feature for that release)
     are shown in the table but excluded from automation_pct's denominator so
@@ -783,25 +789,55 @@ def get_release_automation_status(release_automation_file: str | None) -> dict:
     except Exception as exc:
         return {"status": f"parse_error: {exc}", "releases": {}}
 
-    releases = {}
-    total_counts = {s: 0 for s in _RELEASE_AUTOMATION_STATUSES}
-    for release, rel_data in (data.get("releases") or {}).items():
-        features = rel_data.get("features") or []
+    def _summarize(features: list) -> dict:
         counts = {s: 0 for s in _RELEASE_AUTOMATION_STATUSES}
         for f in features:
             status = f.get("status", "unverified")
             counts[status] = counts.get(status, 0) + 1
-            total_counts[status] = total_counts.get(status, 0) + 1
-
         total = len(features)
         counted = total - counts["excluded"]
-        releases[release] = {
-            "tag_range": rel_data.get("tag_range", ""),
+        return {
             "total": total,
             "counted": counted,
             **counts,
             "automation_pct": round(counts["automated"] / counted * 100, 1) if counted else 0,
             "features": features,
+        }
+
+    releases = {}
+    total_counts = {s: 0 for s in _RELEASE_AUTOMATION_STATUSES}
+    for release, rel_data in (data.get("releases") or {}).items():
+        features = rel_data.get("features") or []
+        summary = _summarize(features)
+        for f in features:
+            status = f.get("status", "unverified")
+            total_counts[status] = total_counts.get(status, 0) + 1
+
+        # Group into sub-releases (e.g. 3.7.0/3.7.1/3.7.2) where the yaml provides
+        # them; features with sub_release: null (no related PR to attribute) land
+        # in an "unresolved" bucket rather than being silently dropped. Each
+        # sub-release also carries its dependency_pins snapshot (the exact
+        # dependent-repo version pinned into that build) for transparency.
+        all_pins = data.get("dependency_pins") or {}
+        sub_release_order = rel_data.get("sub_releases") or []
+        by_sub: dict[str, list] = defaultdict(list)
+        for f in features:
+            by_sub[f.get("sub_release") or "unresolved"].append(f)
+        sub_release_breakdown = {}
+        for sub in sub_release_order:
+            if not by_sub.get(sub):
+                continue
+            entry = _summarize(by_sub[sub])
+            entry["dependency_pins"] = all_pins.get(sub, {})
+            sub_release_breakdown[sub] = entry
+        if by_sub.get("unresolved"):
+            sub_release_breakdown["unresolved"] = _summarize(by_sub["unresolved"])
+
+        releases[release] = {
+            "tag_range": rel_data.get("tag_range", ""),
+            "sub_releases": sub_release_order,
+            "sub_release_breakdown": sub_release_breakdown,
+            **summary,
         }
 
     total = sum(r["total"] for r in releases.values())

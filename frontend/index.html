@@ -748,6 +748,23 @@ const AUTOMATION_REPO_URLS = {
   sootballs_tests:         'https://github.com/rapyuta-robotics/sootballs_tests/pull/',
   sootballs_wms_interface: 'https://github.com/rapyuta-robotics/sootballs_wms_interface/pull/',
   rr_lbc:                  'https://github.com/rapyuta-robotics/rr_lbc/pull/',
+  rr_orders_ui_modules:    'https://github.com/rapyuta-robotics/rr_orders_ui_modules/pull/',
+  rr_sootballs_robot_ui:   'https://github.com/rapyuta-robotics/rr_sootballs_robot_ui/pull/',
+  rr_amr_ui:               'https://github.com/rapyuta-robotics/rr_amr_ui/pull/',
+};
+const SUB_RELEASE_LABELS = { unresolved: 'Unresolved (no related PR)' };
+const DEPENDENCY_PIN_LABELS = {
+  IO_AMR_BASE_TAG:         'IO AMR Base (rr_lbc)',
+  WMS_TAG:                 'WMS Interface',
+  ROBOT_UI_TAG:            'Robot UI',
+  ORDERS_UI_MODULES_TAG:   'Orders UI Modules',
+  LEGACY_UI_TAG:           'AMR UI',
+  SYSTEM_UI_TAG:           'System UI',
+  WEB_INTERFACE_TAG:       'Web Interface',
+  IMS_TAG:                 'IMS',
+  TASKS_TAG:               'Tasks',
+  PRINT_AGENT_TAG:         'Print Agent',
+  GWM_TAG:                 'GWM',
 };
 
 function StatusBadge({ status }) {
@@ -776,8 +793,76 @@ function PRList({ value }) {
   });
 }
 
+function AutomationFeatureTable({ features }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th><th>Suite ID</th><th>Related PRs</th><th>Test PR</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {features.map((f, i) => (
+            <tr key={i}>
+              <td style={{ maxWidth: 340 }} title={f.note || ''}>{f.feature}</td>
+              <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{f.suite_id || '—'}</td>
+              <td><PRList value={f.related_prs} /></td>
+              <td><PRList value={f.test_pr} /></td>
+              <td><StatusBadge status={f.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DependencyPinsTable({ pins }) {
+  const entries = Object.entries(pins || {}).filter(([, v]) => v);
+  if (!entries.length) return null;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div className="td-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+        Dependent-repo versions pinned into this build (docker/.env):
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {entries.map(([key, val]) => (
+          <span
+            key={key}
+            className="badge badge-tier2"
+            style={{ fontSize: 11 }}
+            title={key}
+          >
+            {DEPENDENCY_PIN_LABELS[key] || key}: {val}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AutomationSubReleaseSection({ subRelease, data }) {
+  const label = SUB_RELEASE_LABELS[subRelease] || subRelease;
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+        <h4 style={{ margin: 0, fontSize: 14 }}>{label}</h4>
+        <span className="td-muted" style={{ fontSize: 12 }}>
+          {data.total} feature{data.total === 1 ? '' : 's'}
+          {subRelease !== 'unresolved' && ` · ${data.automation_pct}% automated`}
+        </span>
+      </div>
+      {subRelease !== 'unresolved' && <DependencyPinsTable pins={data.dependency_pins} />}
+      <AutomationFeatureTable features={data.features} />
+    </div>
+  );
+}
+
 function AutomationReleaseSection({ release, data }) {
-  const pctColor = data.automation_pct >= 60 ? '#10b981' : data.automation_pct >= 30 ? '#f59e0b' : '#f43f5e';
+  const subReleaseKeys = [...(data.sub_releases || []), 'unresolved'].filter(
+    s => data.sub_release_breakdown[s]
+  );
   return (
     <div style={{ marginBottom: 32 }}>
       <div className="section-title">
@@ -792,26 +877,9 @@ function AutomationReleaseSection({ release, data }) {
         <KPICard label="Manually Verified" value={data.manually_verified} sub="confirmed, no automation" />
         <KPICard label="Not Automatable" value={data.not_automatable} sub="hardware/sim-limit only" />
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Feature</th><th>Suite ID</th><th>Backend PR</th><th>Test PR</th><th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.features.map((f, i) => (
-              <tr key={i}>
-                <td style={{ maxWidth: 340 }} title={f.note || ''}>{f.feature}</td>
-                <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{f.suite_id || '—'}</td>
-                <td><PRList value={f.backend_pr} /></td>
-                <td><PRList value={f.test_pr} /></td>
-                <td><StatusBadge status={f.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {subReleaseKeys.map(sub => (
+        <AutomationSubReleaseSection key={sub} subRelease={sub} data={data.sub_release_breakdown[sub]} />
+      ))}
     </div>
   );
 }
@@ -831,7 +899,7 @@ function AutomationPage() {
           <div>
             Release automation data unavailable: <code>{data.status}</code>. Set{' '}
             <code>release_automation_file</code> in <code>config.yaml</code> to the path of{' '}
-            <code>qa_tooling/release_automation_status.yaml</code> from the sootballs_tests repo.
+            <code>data/release_automation_status.yaml</code> in this repo.
           </div>
         </div>
       </div>
@@ -862,10 +930,15 @@ function AutomationPage() {
       <div className="notice notice-slate">
         <span className="notice-icon">ℹ</span>
         <div>
-          Built from git tag-range commit analysis across rr_sootballs, sootballs_wms_interface, and rr_lbc,
-          cross-referenced with ADO Test Plans/Suites and verified against real (non-skipped) test file content,
-          with Slack search resolving any gaps left open. "Excluded" rows (not an actual new feature for that
-          release) are shown for transparency but excluded from automation-rate denominators.
+          Built from git tag-range commit analysis across rr_sootballs and its dependent repos (WMS interface,
+          Robot UI, Orders UI Modules, AMR UI, rr_lbc, and others), cross-referenced with ADO Test Plans/Suites
+          and verified against real (non-skipped) test file content, with Slack search resolving any gaps left
+          open. Each feature's Related PRs column lists every dependent-repo PR found for it — not just the one
+          backend PR that determined its sub-release. Sub-release placement (e.g. 3.7.0 vs 3.7.1) is resolved by
+          checking each PR's merge commit against the exact dependency version pinned into that specific
+          sub-release's build (shown above each sub-release's table), not by date proximity. "Excluded" rows
+          (not an actual new feature for that release) are shown for transparency but excluded from
+          automation-rate denominators.
         </div>
       </div>
     </div>
