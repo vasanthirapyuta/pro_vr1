@@ -814,15 +814,18 @@ def get_release_automation_status(release_automation_file: str | None) -> dict:
             total_counts[status] = total_counts.get(status, 0) + 1
 
         # Group into sub-releases (e.g. 3.7.0/3.7.1/3.7.2) where the yaml provides
-        # them; features with sub_release: null (no related PR to attribute) land
-        # in an "unresolved" bucket rather than being silently dropped. Each
-        # sub-release also carries its dependency_pins snapshot (the exact
-        # dependent-repo version pinned into that build) for transparency.
+        # them; features with sub_release: null (no related PR to attribute), or
+        # any sub_release value that doesn't match this release's sub_releases
+        # list (e.g. a yaml typo), land in an "unresolved" bucket rather than
+        # being silently dropped from every grouped view. Each sub-release also
+        # carries its dependency_pins snapshot (the exact dependent-repo version
+        # pinned into that build) for transparency.
         all_pins = data.get("dependency_pins") or {}
         sub_release_order = rel_data.get("sub_releases") or []
         by_sub: dict[str, list] = defaultdict(list)
         for f in features:
-            by_sub[f.get("sub_release") or "unresolved"].append(f)
+            sub = f.get("sub_release")
+            by_sub[sub if sub in sub_release_order else "unresolved"].append(f)
         sub_release_breakdown = {}
         for sub in sub_release_order:
             if not by_sub.get(sub):

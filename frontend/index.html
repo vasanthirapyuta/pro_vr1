@@ -778,19 +778,33 @@ function StatusBadge({ status }) {
 
 function PRList({ value }) {
   if (!value) return <span className="td-muted">—</span>;
-  const parts = value.split(',').map(s => s.trim());
-  return parts.map((part, i) => {
-    const m = part.match(/^(\w+)#(\d+)$/);
-    const url = m && AUTOMATION_REPO_URLS[m[1]];
-    return (
-      <React.Fragment key={i}>
-        {i > 0 && ', '}
-        {url
-          ? <a href={url + m[2]} target="_blank" rel="noreferrer" style={{ color: 'var(--indigo)', textDecoration: 'none' }}>{part}</a>
-          : part}
-      </React.Fragment>
+  // Find every repo#number occurrence anywhere in the string and link it,
+  // preserving all surrounding text verbatim (commas, semicolons, "(closed,
+  // never merged)"-style annotations, "and others", etc.) — rather than
+  // splitting on ',' first, which breaks on annotations that themselves
+  // contain a comma (e.g. "sootballs_tests#255 (closed, never merged)").
+  const pattern = /(\w+)#(\d+)/g;
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(<React.Fragment key={key++}>{value.slice(lastIndex, match.index)}</React.Fragment>);
+    }
+    const [full, repo, num] = match;
+    const url = AUTOMATION_REPO_URLS[repo];
+    nodes.push(
+      url
+        ? <a key={key++} href={url + num} target="_blank" rel="noreferrer" style={{ color: 'var(--indigo)', textDecoration: 'none' }}>{full}</a>
+        : <React.Fragment key={key++}>{full}</React.Fragment>
     );
-  });
+    lastIndex = match.index + full.length;
+  }
+  if (lastIndex < value.length) {
+    nodes.push(<React.Fragment key={key++}>{value.slice(lastIndex)}</React.Fragment>);
+  }
+  return nodes;
 }
 
 function AutomationFeatureTable({ features }) {
