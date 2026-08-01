@@ -143,9 +143,27 @@ docker run \
 | GET | `/api/test_area_breakdown` | User Stories/Tasks classified by test-area keyword, from the snapshot file |
 | POST | `/api/refresh` | Invalidate ADO cache and force re-fetch |
 
-All responses are JSON. ADO responses cache for **10 minutes** (`CACHE_TTL` env var); CI Stability
-caches separately for **30 minutes** (it walks GitHub run history and downloads an artifact per
-workflow, ~7–10s cold — not worth repeating on every page load for data that changes once a day).
+All responses are JSON.
+
+---
+
+## Data Refresh
+
+| Data | Refresh interval | Why |
+|------|------------------|-----|
+| ADO data (sprints, KPIs, engineers, bugs, test plans, release automation) | **10 minutes** (`CACHE_TTL` env var) | Balances near-live data against ADO API load |
+| CI Stability % | **30 minutes**, cached separately | Walks GitHub Actions run history and downloads an Allure artifact per workflow (~7–10s cold); the underlying nightly data only changes once a day, so a shorter cache isn't worth the repeated cost |
+| Local generated files (`release_automation_status.yaml`, snapshot, flaky report) | Read fresh on every request (not time-cached) | Small local files — the cost of re-reading them is negligible, so there's no reason to serve stale content |
+
+Once a cache window expires, the next request to that endpoint triggers a live re-fetch automatically —
+no restart needed.
+
+**Manual refresh**: clicking the refresh button in the dashboard header calls `POST /api/refresh`,
+which invalidates the ADO cache immediately (CI Stability and local-file reads are unaffected, since
+they either have their own shorter-lived cache or aren't cached at all). On the frontend, the same
+click also remounts the currently active tab (via a `key` bump on the page component in `App()`), so
+every fetch on that page — not just the first one — re-runs immediately instead of waiting out its
+cache window.
 
 ### CI Stability % — how it actually works
 
