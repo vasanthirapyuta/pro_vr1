@@ -467,13 +467,6 @@ releases:
         test_pr: null
         status: not_automatable
         note: Physical robot required.
-      - feature: System UI Configure
-        sub_release: 3.7.2
-        suite_id: null
-        related_prs: null
-        test_pr: null
-        status: excluded
-        note: "3.7.2. Confirmed by Pierre in Slack: not a separate feature, not applicable."
       - feature: "Weight Inspection — pack/subpack mass data-model enabler"
         sub_release: 3.7.0
         suite_id: null
@@ -536,7 +529,7 @@ releases:
         related_prs: "rr_sootballs#5977"
         test_pr: null
         status: excluded
-        note: "3.7.0. Config/routing only, not a separate feature (distinct from the 3.7.2 System UI Configure row above)."
+        note: "3.7.0. Config/routing only, not a separate feature."
       - feature: ExePathFeedback simulation enabler (dist_to_goal/angle_to_goal)
         sub_release: 3.7.0
         suite_id: null
