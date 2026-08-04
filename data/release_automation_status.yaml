@@ -42,8 +42,10 @@
 #                         "Sim-infra, not QA-testable:", "Observability/tracing only,
 #                         not QA-testable:", "Data-model enabler, no testable behavior
 #                         yet:", "Config/routing only, not independently testable:",
-#                         "Never shipped in this release:", or "UNRESOLVED:" for an
-#                         open question pending engineering follow-up.
+#                         "Never shipped in this release:", or "UNRESOLVED:" when
+#                         sources contradict each other on whether/when this shipped
+#                         or what covers it — don't trust this row's sub_release or
+#                         coverage claim until the contradiction is resolved.
 #   unverified            no conclusive evidence found either way
 #
 # suite_id: null means no ADO suite could be resolved for this feature (reported
@@ -521,7 +523,7 @@ releases:
         related_prs: null
         test_pr: null
         status: excluded
-        note: "3.7.0/3.7.1. Pre-existing capability (<3.4 per internal feature-version matrix); existing zone_picking tests already cover it. UNRESOLVED: an internal docs_for_agent commit (rr_sootballs 5b594589a) instead claims the underlying pick_drop_zone_ordering flag was introduced in v3.7.0 — but git shows that code exists only on unmerged side branches (incl. vsk_kao_improvements), not in devel or any 3.4-3.7.2 dependency pin. Needs engineering follow-up before reclassifying; left as-is."
+        note: "UNRESOLVED, left as excluded pending engineering follow-up: original research called this a pre-existing capability (<3.4 per internal feature-version matrix) with existing zone_picking test coverage. That claim is contradicted by a later internal docs_for_agent commit (rr_sootballs 5b594589a), which instead states the underlying pick_drop_zone_ordering flag was introduced in v3.7.0 — yet git shows that flag's code exists only on unmerged side branches (incl. vsk_kao_improvements), not in devel or any 3.4-3.7.2 dependency pin. The two claims can't both be right; do not trust either the sub_release or the coverage claim here until this is resolved."
       - feature: "System UI Configure (Kratos auth rollout, /system-ui routing)"
         sub_release: 3.7.0
         suite_id: null
