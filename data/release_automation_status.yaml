@@ -37,7 +37,13 @@
 #   yet_to_automate       no test PR found; feature is a real automation gap
 #   manually_verified     confirmed working via manual/Slack sign-off, no automated test
 #   not_automatable       genuine hardware/simulation-limit only (e.g. physical scale, LED)
-#   excluded              not actually a new distinct feature for this release
+#   excluded              not actually a new distinct feature for this release, or not
+#                         independently QA-testable. The note's leading tag says why:
+#                         "Sim-infra, not QA-testable:", "Observability/tracing only,
+#                         not QA-testable:", "Data-model enabler, no testable behavior
+#                         yet:", "Config/routing only, not independently testable:",
+#                         "Never shipped in this release:", or "UNRESOLVED:" for an
+#                         open question pending engineering follow-up.
 #   unverified            no conclusive evidence found either way
 #
 # suite_id: null means no ADO suite could be resolved for this feature (reported
@@ -273,7 +279,7 @@ releases:
         related_prs: "rr_sootballs#5562, rr_sootballs#5755, rr_sootballs_robot_ui#537, rr_sootballs_robot_ui#540, rr_amr_ui#2016, rr_lbc#1891, rr_lbc#1892"
         test_pr: "sootballs_tests#305"
         status: automated
-        note: Only 6 real tests found locally vs ~20 ADO test cases — coverage looks partial.
+        note: "Only 6 real tests found locally vs ~20 ADO test cases — coverage looks partial. ADO suite 109353 ('Skip_Pick') was later opened under 3.7.0 to re-track this same feature for Kao regression — same PRs (#5562/#5755), not independent work; not counted as a separate row."
       - feature: Recovery Label
         sub_release: null
         suite_id: "88565"
@@ -339,9 +345,9 @@ releases:
         sub_release: null
         suite_id: "92633"
         related_prs: null
-        test_pr: null
-        status: excluded
-        note: "Pre-existing capability (sootballs_wms_interface#486/#504/#639 etc.) getting new regression coverage, not a new 3.6 feature."
+        test_pr: "sootballs_tests#77"
+        status: automated
+        note: "Capability and its automated coverage predate 3.4 (sootballs_tests#77, merged 2024-07-19, 32 TCs). sootballs_tests#344 (Mar 2026) is a stabilization fix of that same suite, not new coverage — kept at the 3.6 release level since that's when the suite was re-verified, same pattern as Pick Data & Quantity Extraction / Custom Product Code above."
   "3.7":
     tag_range: "3.6.3 - 3.7.2 (covers 3.7.0, 3.7.1, 3.7.2)"
     sub_releases:
@@ -473,7 +479,7 @@ releases:
         related_prs: "rr_sootballs#5654"
         test_pr: null
         status: excluded
-        note: "3.7.0. Pure data-model enabler, no independently testable behavior yet."
+        note: "3.7.0. Data-model enabler, no testable behavior yet: pure schema plumbing ahead of a future feature."
       - feature: "Wait For Charge Mode (RUI WaitForJob UIAction + MFA=0 charge-policy fix)"
         sub_release: 3.7.0
         suite_id: null
@@ -509,69 +515,62 @@ releases:
         test_pr: null
         status: yet_to_automate
         note: "AB#85552 still 'In Review' despite merged code. Same gap first shipped in 3.5/3.6 — still unautomated here."
-      - feature: Skip Pick — Kao customization
-        sub_release: 3.7.0
-        suite_id: "109353"
-        related_prs: "rr_sootballs#5562, rr_sootballs#5755"
-        test_pr: null
-        status: excluded
-        note: "3.7.0. Pre-existing 3.6.0 feature getting Kao-specific regression; existing test files already exercise MAX_SKIP_PICK_ATTEMPTS."
       - feature: Zone Batch Ordering — Kao congestion regression (pick_drop_zone_ordering)
         sub_release: 3.7.0
         suite_id: 99375 / 109498 (same 5 TC IDs duplicated across 3.7.0 and 3.7.1 suites)
         related_prs: null
         test_pr: null
         status: excluded
-        note: "3.7.0/3.7.1. Pre-existing capability (<3.4 per internal feature-version matrix); existing zone_picking tests already cover it."
+        note: "3.7.0/3.7.1. Pre-existing capability (<3.4 per internal feature-version matrix); existing zone_picking tests already cover it. UNRESOLVED: an internal docs_for_agent commit (rr_sootballs 5b594589a) instead claims the underlying pick_drop_zone_ordering flag was introduced in v3.7.0 — but git shows that code exists only on unmerged side branches (incl. vsk_kao_improvements), not in devel or any 3.4-3.7.2 dependency pin. Needs engineering follow-up before reclassifying; left as-is."
       - feature: "System UI Configure (Kratos auth rollout, /system-ui routing)"
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5977"
         test_pr: null
         status: excluded
-        note: "3.7.0. Config/routing only, not a separate feature."
+        note: "3.7.0. Config/routing only, not independently testable: Kratos auth rollout and /system-ui routing change with no distinct user-facing behavior to verify."
       - feature: ExePathFeedback simulation enabler (dist_to_goal/angle_to_goal)
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5921"
         test_pr: null
         status: excluded
-        note: "3.7.0. Sim-infra enabler, not a distinct QA-testable feature."
+        note: "3.7.0. Sim-infra, not QA-testable: dist_to_goal/angle_to_goal enabler for simulation only, no distinct QA-testable feature."
       - feature: Simulation scanner login support
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5793"
         test_pr: null
         status: excluded
-        note: "3.7.0. Sim-infra enabler; AB#85608 still 'In Review'."
+        note: "3.7.0. Sim-infra, not QA-testable: simulation-only scanner login enabler; AB#85608 still 'In Review'."
       - feature: "Configurable rosbridge/log-collector toggles (ROI simulation)"
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5880"
         test_pr: null
         status: excluded
-        note: "3.7.0. Sim-infra only."
+        note: "3.7.0. Sim-infra, not QA-testable: rosbridge/log-collector toggles for ROI simulation only."
       - feature: Replenishment unload timing tracking
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5623"
         test_pr: null
         status: excluded
-        note: "3.7.0. Tracing only; AB#68224 still 'QA Testing'."
+        note: "3.7.0. Observability/tracing only, not QA-testable: unload timing tracking; AB#68224 still 'QA Testing'."
       - feature: Connection monitoring fix (405 etcd log errors)
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5822"
         test_pr: null
         status: excluded
-        note: "3.7.0. Infra bugfix, not a feature."
+        note: "3.7.0. Observability/tracing only, not QA-testable: etcd connection-monitoring log-error fix, no user-facing behavior to verify."
       - feature: "Zone-picking cutoff-time bug fix (shipper-count recalc after rebatch)"
         sub_release: 3.7.0
         suite_id: null
         related_prs: "rr_sootballs#5707"
         test_pr: null
-        status: excluded
-        note: "3.7.0. Bugfix (AB#82324 logged as Bug, not Feature), not a distinct feature."
+        status: yet_to_automate
+        note: "3.7.0. Real behavior change (183/56 lines in shipper_allocation_manager.cpp + task assigner), closed Bug AB#82324, not infra — genuine automation gap. No existing coverage found (searched sootballs_tests for 'rebatch' / 'shipper_count')."
       - feature: Enjoy Picking Phase 2 — Chance Mode + multiplier
         sub_release: 3.7.1
         suite_id: "109497 (contains phase-1 goal-timer TCs; no distinct chance-mode TC set found)"
@@ -592,14 +591,14 @@ releases:
         related_prs: "rr_sootballs#6069, rr_sootballs#6074"
         test_pr: null
         status: excluded
-        note: 3.7.1. Observability/BigQuery pipeline only.
+        note: "3.7.1. Observability/tracing only, not QA-testable: productId + BigQuery upload trace pipeline, no user-facing behavior to verify."
       - feature: Batch Induction PickItem Trace
         sub_release: 3.7.1
         suite_id: null
         related_prs: "rr_sootballs#6034, rr_sootballs#6071"
         test_pr: null
         status: excluded
-        note: "3.7.1. Tracing enabler only; confirmed by git ancestry to ship in 3.7.1, not 3.7.0."
+        note: "3.7.1. Observability/tracing only, not QA-testable: PickItem tracing enabler; confirmed by git ancestry to ship in 3.7.1, not 3.7.0."
       - feature: "Work List UI Enhancements (Tote Progress column, Status/Unload-Region filters, bulk induction-region update)"
         sub_release: 3.7.0
         suite_id: null
@@ -613,7 +612,7 @@ releases:
         related_prs: "rr_sootballs#6076"
         test_pr: null
         status: excluded
-        note: "Commonly believed to be a 3.7.1 feature, but git merge-base --is-ancestor proves the merge commit is reachable from neither the 3.7.1 nor 3.7.2 tag — only exists on devel, never backported to release/3.7. Kept here (rather than silently dropped) so this correction isn't lost."
+        note: "Never shipped in this release: commonly believed to be a 3.7.1 feature, but git merge-base --is-ancestor proves the merge commit is reachable from neither the 3.7.1 nor 3.7.2 tag — only exists on devel, never backported to release/3.7. Kept here (rather than silently dropped) so this correction isn't lost."
 dependency_pins:
   3.4.0:
     IO_AMR_BASE_TAG: "5.3.0-rc.6"
