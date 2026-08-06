@@ -125,13 +125,15 @@ snapshot_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/qa_
 # Used by /api/flaky_tests.
 flaky_report_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/flaky_tests_report.json"
 
-# Path to release_automation_status.yaml — the release-wise (3.4-3.7) feature
-# automation master table (Feature -> ADO Suite ID -> Backend PR -> Test PR ->
-# Status), built from git tag-range commit analysis across rr_sootballs /
-# sootballs_wms_interface / rr_lbc, ADO Test Plan/Suite cross-reference, and
-# Slack verification. Used by /api/release_automation, the dashboard's
-# consolidated Automation tab.
-release_automation_file: "/home/vasanthi/catkin_ws/src/repo/sootballs_tests/qa_tooling/release_automation_status.yaml"
+# Path to release_automation_status.yaml — the release-wise (3.4-3.7), sub-release
+# granular (e.g. 3.7.0/3.7.1/3.7.2) feature automation master table
+# (Feature -> Sub-release -> ADO Suite ID -> Related PRs -> Test PR -> Status),
+# built from git tag-range commit analysis across rr_sootballs / dependent repos,
+# ADO Test Plan/Suite cross-reference, and Slack verification. Lives in this repo
+# (data/) rather than sootballs_tests so the dashboard is self-contained for this
+# data. Used by /api/release_automation, the dashboard's consolidated Automation tab.
+# Relative paths resolve against this repo's root.
+release_automation_file: "data/release_automation_status.yaml"
 
 # Legacy iteration path → sprint label mapping for work items created before
 # 2026-02-01 in the sootballs ADO project.

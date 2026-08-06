@@ -85,6 +85,8 @@ _RELEASE_AUTOMATION_FILE: str | None = (
     os.environ.get("RELEASE_AUTOMATION_FILE")
     or CFG.get("release_automation_file")
 )
+if _RELEASE_AUTOMATION_FILE and not os.path.isabs(_RELEASE_AUTOMATION_FILE):
+    _RELEASE_AUTOMATION_FILE = str(_ROOT / _RELEASE_AUTOMATION_FILE)
 # GitHub token for nightly health endpoint (reads Actions API, no OAuth needed).
 # Read lazily at request time so it picks up env vars set after process start.
 def _get_github_token() -> str | None:
